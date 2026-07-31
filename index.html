@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Tendencias de jugadores y equipos de la Liga Profesional argentina.">
+  <title>Betting Dashboard</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#f7f7f5;--panel:#fff;--text:#171717;--muted:#686868;--border:#deded9;--accent:#d71920;--bar:#171717;--missing:#e5e5df;--shadow:0 12px 36px rgba(0,0,0,.08)}
+    @media(prefers-color-scheme:dark){:root{--bg:#111;--panel:#191919;--text:#f4f4f1;--muted:#aaa;--border:#353535;--accent:#ff4d52;--bar:#f4f4f1;--missing:#303030;--shadow:none}}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(1180px,calc(100% - 28px));margin:30px auto 50px}header{display:flex;justify-content:space-between;gap:20px;align-items:end;margin-bottom:22px}h1{margin:0;font-size:clamp(26px,4vw,42px);letter-spacing:-.04em}header p{margin:4px 0 0;color:var(--muted)}#updated{white-space:nowrap}.panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px}.modes{display:flex;gap:8px;margin-bottom:14px}.modes button{width:auto}.controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:18px}label{display:grid;gap:6px;color:var(--muted);font-size:13px}select,input,button{width:100%;min-height:42px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);font:inherit;padding:8px 10px}button{cursor:pointer}button.active{background:var(--text);color:var(--bg);border-color:var(--text)}#player-field[hidden]{display:none!important}.summary{margin:0 0 12px}.summary strong{font-weight:650}.chart-wrap{position:relative;overflow-x:auto}.chart{display:block;width:100%;min-width:700px}.grid{stroke:var(--border);stroke-width:1}.bar{fill:var(--bar)}.missing{fill:var(--missing);stroke:var(--border)}.line{stroke:var(--accent);stroke-width:2}.value{fill:var(--text);font-size:12px;font-weight:650;text-anchor:middle}.tick{fill:var(--muted);font-size:11px;text-anchor:middle}.tooltip{position:absolute;display:none;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 9px;box-shadow:var(--shadow);pointer-events:none}.tooltip.show{display:block}.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:9px;color:var(--muted);font-size:12px}.dot{width:11px;height:11px;display:inline-block;margin-right:5px;vertical-align:-1px}.dot.valid{background:var(--bar)}.dot.missing{background:var(--missing);border:1px solid var(--border)}.error{color:var(--accent)}
+    @media(max-width:700px){header{align-items:start;flex-direction:column}.controls{grid-template-columns:1fr 1fr}.panel{padding:13px}}@media(max-width:430px){.controls{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <header><div><h1>Betting Dashboard</h1><p>Liga Profesional · tendencias partido por partido</p></div><p id="updated">Cargando datos…</p></header>
+  <section class="panel">
+    <div class="modes"><button id="mode-player" class="active" aria-pressed="true">Jugador</button><button id="mode-team" aria-pressed="false">Equipo</button></div>
+    <div class="controls">
+      <label>Equipo<select id="team"></select></label>
+      <label id="player-field">Jugador<select id="player"></select></label>
+      <label>Métrica<select id="metric"></select></label>
+      <label>Localía<select id="venue"><option value="all">Todos</option><option value="home">Local</option><option value="away">Visitante</option></select></label>
+      <label>Partidos<select id="window"><option value="5">Últimos 5</option><option value="10" selected>Últimos 10</option><option value="15">Últimos 15</option><option value="20">Últimos 20</option></select></label>
+      <label>Línea de apuesta<input id="line" type="number" min="0.5" max="40.5" step="1" value="1.5"></label>
+    </div>
+    <p id="summary" class="summary"></p>
+    <div class="chart-wrap"><svg id="chart" class="chart" height="430" role="img"></svg><div id="tooltip" class="tooltip"></div></div>
+    <div class="legend"><span><i class="dot valid"></i>Dato válido</span><span><i class="dot missing"></i>No jugó / sin cobertura</span><span>L = local · V = visitante</span></div>
+  </section>
+</main>
+<script>
+(function(){
+  "use strict";
+  let teams=[],mode="player";
+  const $=id=>document.getElementById(id),team=$('team'),player=$('player'),metric=$('metric'),venue=$('venue'),windowSize=$('window'),line=$('line'),chart=$('chart'),summary=$('summary'),tooltip=$('tooltip'),playerField=$('player-field');
+  const metricSets={player:[['sh','Remates',1.5],['so','Remates al arco',.5],['sv','Atajadas',2.5]],team:[['sh','Remates',11.5],['so','Remates al arco',3.5],['co','Córners',4.5],['gf','Goles',1.5],['ga','Goles recibidos',1.5]]};
+  const option=(value,text)=>{const o=document.createElement('option');o.value=value;o.textContent=text;return o};
+  const selectedTeam=()=>teams[Number(team.value)||0];
+  function fillTeams(){team.textContent='';teams.forEach((t,i)=>team.append(option(i,t.n)))}
+  function fillMetrics(reset=true){const old=metric.value;metric.textContent='';metricSets[mode].forEach(m=>metric.append(option(m[0],m[1])));if(metricSets[mode].some(m=>m[0]===old))metric.value=old;if(reset)line.value=metricSets[mode].find(m=>m[0]===metric.value)[2]}
+  function fillPlayers(){const t=selectedTeam(),old=player.value;player.textContent='';let ids=t.r.map((_,i)=>i);if(metric.value==='sv')ids=ids.filter(i=>(t.g||[]).includes(i));ids.forEach(i=>player.append(option(i,t.r[i])));if([...player.options].some(o=>o.value===old))player.value=old}
+  function setMode(next){mode=next;playerField.hidden=next==='team';$('mode-player').classList.toggle('active',next==='player');$('mode-team').classList.toggle('active',next==='team');$('mode-player').setAttribute('aria-pressed',next==='player');$('mode-team').setAttribute('aria-pressed',next==='team');fillMetrics();if(next==='player')fillPlayers();draw()}
+  function label(){return metricSets[mode].find(m=>m[0]===metric.value)[1]}
+  function value(m){if(mode==='team')return m.x[{sh:0,so:1,co:2,gf:3,ga:4}[metric.value]];const row=m.p.find(p=>p[0]===Number(player.value));if(!row)return null;return row[{sh:1,so:2,sv:3}[metric.value]]}
+  function matches(){const loc=venue.value,n=Number(windowSize.value);return selectedTeam().m.filter(m=>loc==='all'||(loc==='home'&&m.h===1)||(loc==='away'&&m.h===0)).slice(-n)}
+  function date(iso){const [y,m,d]=iso.split('-').map(Number),months=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return d+' '+months[m]}
+  function el(name,attrs,text){const n=document.createElementNS('http://www.w3.org/2000/svg',name);Object.entries(attrs||{}).forEach(([k,v])=>n.setAttribute(k,v));if(text!==undefined)n.textContent=text;return n}
+  function draw(){if(!teams.length)return;const t=selectedTeam(),ms=matches(),vals=ms.map(value),valid=vals.filter(v=>v!==null&&v!==undefined),bet=Number(line.value),over=valid.filter(v=>v>bet).length,under=valid.filter(v=>v<bet).length,subject=mode==='player'?t.r[Number(player.value)]:t.n;summary.innerHTML='<strong>'+subject+' · '+label()+'</strong> · Over '+bet+': '+over+'/'+valid.length+' · Under: '+under+'/'+valid.length+(valid.length<ms.length?' · '+(ms.length-valid.length)+' sin dato':'');chart.textContent='';const width=Math.max(700,chart.parentElement.clientWidth),height=430,margin={top:30,right:18,bottom:118,left:46},pw=width-margin.left-margin.right,ph=height-margin.top-margin.bottom,max=Math.max(4,Math.ceil((valid.length?Math.max(...valid):0)+1),Math.ceil(bet+1)),slot=pw/Math.max(ms.length,1),bw=Math.max(10,slot*.62),y=v=>margin.top+ph-v/max*ph;chart.setAttribute('viewBox','0 0 '+width+' '+height);chart.setAttribute('aria-label',label()+' por partido de '+subject);for(let k=0;k<=max;k++){const gy=y(k);chart.append(el('line',{x1:margin.left,y1:gy,x2:width-margin.right,y2:gy,class:'grid'}));chart.append(el('text',{x:margin.left-11,y:gy+4,class:'tick'},k))}const ly=y(bet);chart.append(el('line',{x1:margin.left,y1:ly,x2:width-margin.right,y2:ly,class:'line'}));chart.append(el('text',{x:width-margin.right-2,y:ly-6,class:'tick','text-anchor':'end'},'Línea '+bet));ms.forEach((m,i)=>{const v=vals[i],x=margin.left+i*slot+(slot-bw)/2;if(v===null||v===undefined){chart.append(el('rect',{x,y:y(0)-8,width:bw,height:8,class:'missing'}));chart.append(el('text',{x:x+bw/2,y:y(0)-12,class:'value'},'×'))}else{const top=v===0?y(0)-3:y(v),bh=v===0?3:y(0)-top,r=el('rect',{x,y:top,width:bw,height:bh,rx:2,class:'bar'});r.addEventListener('mouseenter',()=>{tooltip.textContent=date(m.d)+' · '+(m.h?'L':'V')+' vs '+m.o+' · '+v+' '+label().toLowerCase();tooltip.classList.add('show');tooltip.style.left=Math.min(width-220,Math.max(0,x))+'px';tooltip.style.top=Math.max(0,top-48)+'px'});r.addEventListener('mouseleave',()=>tooltip.classList.remove('show'));chart.append(r);chart.append(el('text',{x:x+bw/2,y:top-7,class:'value'},v))}const g=el('g',{transform:'translate('+(margin.left+i*slot+slot/2)+' '+(margin.top+ph+12)+') rotate(-58)'});g.append(el('text',{class:'tick','text-anchor':'end'},date(m.d)+' · '+(m.h?'L':'V')+' '+m.o));chart.append(g)})}
+  team.addEventListener('change',()=>{fillPlayers();draw()});player.addEventListener('change',draw);metric.addEventListener('change',()=>{line.value=metricSets[mode].find(m=>m[0]===metric.value)[2];if(mode==='player')fillPlayers();draw()});venue.addEventListener('change',draw);windowSize.addEventListener('change',draw);line.addEventListener('input',draw);$('mode-player').addEventListener('click',()=>setMode('player'));$('mode-team').addEventListener('click',()=>setMode('team'));let timer;addEventListener('resize',()=>{clearTimeout(timer);timer=setTimeout(draw,100)});
+  fetch('data.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(data=>{teams=data.teams;$('updated').textContent='Actualizado: '+new Date(data.generatedAt).toLocaleString('es-AR',{dateStyle:'medium',timeStyle:'short'});fillTeams();fillMetrics();fillPlayers();draw()}).catch(err=>{$('updated').textContent='No se pudieron cargar los datos';$('updated').className='error';summary.textContent=err.message});
+})();
+</script>
+</body>
+</html>
