@@ -17,7 +17,7 @@ OUTPUT = ROOT / "data.json"
 BASE = "https://www.fotmob.com/api/data"
 LEAGUE_ID = 112
 TEAM_MATCH_LIMIT = 20
-WORKERS = int(os.getenv("FETCH_WORKERS", "12"))
+WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
 
 
@@ -66,9 +66,9 @@ def nested_player_stat(player: dict, key: str, default=None):
 
 
 def team_stat(payload: dict, key: str) -> list:
+    content = payload.get("content") or {}
     groups = (
-        payload.get("content", {})
-        .get("stats", {})
+        (content.get("stats") or {})
         .get("Periods", {})
         .get("All", {})
         .get("stats", [])
@@ -123,24 +123,31 @@ def match_detail(match_id: int) -> dict:
     }
 
 
-def pack(teams: list[dict], details: dict[int, dict]) -> list[dict]:
+def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[dict]:
+    previous_teams = {team["i"]: team for team in previous.get("teams", [])}
     packed = []
     for team in teams:
-        roster: list[str] = []
-        roster_index: dict[int, int] = {}
-        goalkeepers: set[int] = set()
+        old_team = previous_teams.get(team["id"], {})
+        roster: list[str] = list(old_team.get("r", []))
+        roster_index = {name: index for index, name in enumerate(roster)}
+        goalkeeper_names = {
+            roster[index] for index in old_team.get("g", []) if 0 <= index < len(roster)
+        }
+        old_matches = {match["i"]: match for match in old_team.get("m", [])}
         matches = []
 
         def player_index(player: dict) -> int:
-            player_id = player["id"]
-            if player_id not in roster_index:
-                roster_index[player_id] = len(roster)
+            name = player["name"]
+            if name not in roster_index:
+                roster_index[name] = len(roster)
                 roster.append(player["name"])
-            return roster_index[player_id]
+            return roster_index[name]
 
         for match_id in team["matches"]:
             detail = details.get(match_id)
             if not detail:
+                if match_id in old_matches:
+                    matches.append(old_matches[match_id])
                 continue
             is_home = detail["home"]["id"] == team["id"]
             side = 0 if is_home else 1
@@ -152,7 +159,7 @@ def pack(teams: list[dict], details: dict[int, dict]) -> list[dict]:
                     continue
                 index = player_index(player)
                 if player["goalkeeper"]:
-                    goalkeepers.add(index)
+                    goalkeeper_names.add(player["name"])
                 rows.append([index, player["shots"], player["shotsOnTarget"], player["saves"], player["cards"]])
             own_yellow = detail["yellowCards"][side]
             own_red = detail["redCards"][side]
@@ -179,19 +186,33 @@ def pack(teams: list[dict], details: dict[int, dict]) -> list[dict]:
                     "p": rows,
                 }
             )
-        packed.append({"i": team["id"], "n": team["name"], "r": roster, "g": sorted(goalkeepers), "m": matches})
+        used = sorted({row[0] for match in matches for row in match["p"]})
+        remap = {old: new for new, old in enumerate(used)}
+        compact_roster = [roster[index] for index in used]
+        for match in matches:
+            for row in match["p"]:
+                row[0] = remap[row[0]]
+        goalkeepers = sorted(
+            index for index, name in enumerate(compact_roster) if name in goalkeeper_names
+        )
+        packed.append({"i": team["id"], "n": team["name"], "r": compact_roster, "g": goalkeepers, "m": matches})
     return packed
 
 
 def main() -> None:
+    previous = json.loads(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else {"teams": []}
     teams = current_teams()
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
         teams = list(pool.map(team_matches, teams))
     ids = sorted({match_id for team in teams for match_id in team["matches"]})
+    known_ids = {
+        match["i"] for team in previous.get("teams", []) for match in team.get("m", [])
+    }
+    new_ids = [match_id for match_id in ids if match_id not in known_ids]
     details: dict[int, dict] = {}
     failures: list[int] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        futures = {pool.submit(match_detail, match_id): match_id for match_id in ids}
+        futures = {pool.submit(match_detail, match_id): match_id for match_id in new_ids}
         for future in concurrent.futures.as_completed(futures):
             match_id = futures[future]
             try:
@@ -199,18 +220,22 @@ def main() -> None:
             except Exception as exc:
                 failures.append(match_id)
                 print(f"warning: match {match_id}: {exc}")
-    if len(details) < int(len(ids) * 0.85):
-        raise RuntimeError(f"Coverage too low: {len(details)}/{len(ids)} matches")
+    if new_ids and len(details) < int(len(new_ids) * 0.5):
+        raise RuntimeError(f"Coverage too low for new matches: {len(details)}/{len(new_ids)}")
+    packed_teams = pack(teams, details, previous)
+    if packed_teams == previous.get("teams", []) and sorted(failures) == sorted(previous.get("failedMatchIds", [])):
+        print(f"no changes; checked {len(teams)} teams and fetched 0 match details")
+        return
     snapshot = {
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "FotMob",
         "failedMatchIds": failures,
-        "teams": pack(teams, details),
+        "teams": packed_teams,
     }
     temporary = OUTPUT.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     temporary.replace(OUTPUT)
-    print(f"updated {len(teams)} teams, {len(details)}/{len(ids)} unique matches")
+    print(f"updated {len(teams)} teams; fetched {len(details)}/{len(new_ids)} new match details")
 
 
 if __name__ == "__main__":
