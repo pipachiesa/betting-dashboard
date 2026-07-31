@@ -35,7 +35,7 @@
   "use strict";
   let teams=[],mode="player";
   const $=id=>document.getElementById(id),team=$('team'),player=$('player'),metric=$('metric'),venue=$('venue'),windowSize=$('window'),line=$('line'),chart=$('chart'),summary=$('summary'),tooltip=$('tooltip'),playerField=$('player-field');
-  const metricSets={player:[['sh','Remates',1.5],['so','Remates al arco',.5],['sv','Atajadas',2.5]],team:[['sh','Remates',11.5],['so','Remates al arco',3.5],['co','Córners',4.5],['gf','Goles',1.5],['ga','Goles recibidos',1.5]]};
+  const metricSets={player:[['sh','Remates',1.5],['so','Remates al arco',.5],['sv','Atajadas',2.5],['ca','Tarjetas recibidas',.5]],team:[['sh','Remates',11.5],['so','Remates al arco',3.5],['co','Córners',4.5],['gf','Goles',1.5],['ga','Goles recibidos',1.5],['cf','Tarjetas recibidas',2.5],['ca','Tarjetas del rival',2.5]]};
   const option=(value,text)=>{const o=document.createElement('option');o.value=value;o.textContent=text;return o};
   const selectedTeam=()=>teams[Number(team.value)||0];
   function fillTeams(){team.textContent='';teams.forEach((t,i)=>team.append(option(i,t.n)))}
@@ -43,7 +43,7 @@
   function fillPlayers(){const t=selectedTeam(),old=player.value;player.textContent='';let ids=t.r.map((_,i)=>i);if(metric.value==='sv')ids=ids.filter(i=>(t.g||[]).includes(i));ids.forEach(i=>player.append(option(i,t.r[i])));if([...player.options].some(o=>o.value===old))player.value=old}
   function setMode(next){mode=next;playerField.hidden=next==='team';$('mode-player').classList.toggle('active',next==='player');$('mode-team').classList.toggle('active',next==='team');$('mode-player').setAttribute('aria-pressed',next==='player');$('mode-team').setAttribute('aria-pressed',next==='team');fillMetrics();if(next==='player')fillPlayers();draw()}
   function label(){return metricSets[mode].find(m=>m[0]===metric.value)[1]}
-  function value(m){if(mode==='team')return m.x[{sh:0,so:1,co:2,gf:3,ga:4}[metric.value]];const row=m.p.find(p=>p[0]===Number(player.value));if(!row)return null;return row[{sh:1,so:2,sv:3}[metric.value]]}
+  function value(m){if(mode==='team')return m.x[{sh:0,so:1,co:2,gf:3,ga:4,cf:5,ca:6}[metric.value]];const row=m.p.find(p=>p[0]===Number(player.value));if(!row)return null;return row[{sh:1,so:2,sv:3,ca:4}[metric.value]]}
   function matches(){const loc=venue.value,n=Number(windowSize.value);return selectedTeam().m.filter(m=>loc==='all'||(loc==='home'&&m.h===1)||(loc==='away'&&m.h===0)).slice(-n)}
   function date(iso){const [y,m,d]=iso.split('-').map(Number),months=['','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return d+' '+months[m]}
   function el(name,attrs,text){const n=document.createElementNS('http://www.w3.org/2000/svg',name);Object.entries(attrs||{}).forEach(([k,v])=>n.setAttribute(k,v));if(text!==undefined)n.textContent=text;return n}
