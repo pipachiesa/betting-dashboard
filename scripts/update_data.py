@@ -84,6 +84,14 @@ def match_detail(match_id: int) -> dict:
     payload = fetch_json("matchDetails", {"matchId": match_id})
     general = payload.get("general", {})
     header_teams = payload.get("header", {}).get("teams", [{}, {}])
+    card_events: dict[int, int] = {}
+    lineup = payload.get("content", {}).get("lineup") or {}
+    for lineup_team in (lineup.get("homeTeam") or {}, lineup.get("awayTeam") or {}):
+        for player in (lineup_team.get("starters") or []) + (lineup_team.get("subs") or []):
+            events = (player.get("performance") or {}).get("events") or []
+            card_events[int(player["id"])] = sum(
+                1 for event in events if event.get("type") in {"yellowCard", "redCard", "secondYellowCard"}
+            )
     players = []
     for player in (payload.get("content", {}).get("playerStats") or {}).values():
         minutes = nested_player_stat(player, "minutes_played", 0) or 0
@@ -97,6 +105,7 @@ def match_detail(match_id: int) -> dict:
                 "shots": nested_player_stat(player, "total_shots", 0) or 0,
                 "shotsOnTarget": nested_player_stat(player, "ShotsOnTarget", 0) or 0,
                 "saves": nested_player_stat(player, "saves") if player.get("isGoalkeeper") else None,
+                "cards": card_events.get(int(player["id"]), 0),
                 "goalkeeper": bool(player.get("isGoalkeeper")),
             }
         )
@@ -108,6 +117,8 @@ def match_detail(match_id: int) -> dict:
         "shots": team_stat(payload, "total_shots"),
         "shotsOnTarget": team_stat(payload, "ShotsOnTarget"),
         "corners": team_stat(payload, "corners"),
+        "yellowCards": team_stat(payload, "yellow_cards"),
+        "redCards": team_stat(payload, "red_cards"),
         "players": players,
     }
 
@@ -142,7 +153,14 @@ def pack(teams: list[dict], details: dict[int, dict]) -> list[dict]:
                 index = player_index(player)
                 if player["goalkeeper"]:
                     goalkeepers.add(index)
-                rows.append([index, player["shots"], player["shotsOnTarget"], player["saves"]])
+                rows.append([index, player["shots"], player["shotsOnTarget"], player["saves"], player["cards"]])
+            own_yellow = detail["yellowCards"][side]
+            own_red = detail["redCards"][side]
+            other_side = 1 - side
+            rival_yellow = detail["yellowCards"][other_side]
+            rival_red = detail["redCards"][other_side]
+            own_cards = None if own_yellow is None and own_red is None else (own_yellow or 0) + (own_red or 0)
+            rival_cards = None if rival_yellow is None and rival_red is None else (rival_yellow or 0) + (rival_red or 0)
             matches.append(
                 {
                     "i": match_id,
@@ -155,6 +173,8 @@ def pack(teams: list[dict], details: dict[int, dict]) -> list[dict]:
                         detail["corners"][side],
                         own["goals"],
                         opponent["goals"],
+                        own_cards,
+                        rival_cards,
                     ],
                     "p": rows,
                 }
