@@ -10,7 +10,7 @@ Dashboard de tendencias para la Liga Profesional argentina, orientado a comparar
 
 ## Actualización
 
-`scripts/update_data.py` consulta los últimos 20 partidos finalizados de cada club y reconstruye `data.json`. GitHub Actions lo ejecuta todos los días a las 06:17 de Argentina y también permite una ejecución manual.
+`scripts/update_data.py` consulta los últimos 20 partidos finalizados de cada club, conserva los datos existentes y descarga el detalle únicamente de partidos nuevos. GitHub Actions lo ejecuta todos los días a las 06:17 de Argentina y también permite una ejecución manual.
 
 Los datos provienen de endpoints públicos utilizados por FotMob y pueden requerir mantenimiento si el proveedor cambia su estructura. Los partidos sin cobertura detallada se representan como datos faltantes, nunca como cero.
 
