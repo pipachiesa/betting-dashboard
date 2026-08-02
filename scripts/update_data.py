@@ -15,10 +15,14 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data.json"
 BASE = "https://www.fotmob.com/api/data"
-LEAGUE_ID = 112
 TEAM_MATCH_LIMIT = 20
 WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
+LEAGUES = (
+    {"key": "arg", "name": "Liga Profesional", "id": 112, "ccode": "ARG", "zones": True, "bootstrap": None},
+    # Start slowly: one full Brasileirão round per daily run, then keep it incremental.
+    {"key": "bra", "name": "Brasileirão", "id": 268, "ccode": "BRA", "zones": False, "bootstrap": 10},
+)
 
 
 def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
@@ -36,28 +40,30 @@ def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
     raise RuntimeError(f"Failed after {attempts} attempts: {url}") from error
 
 
-def current_teams() -> list[dict]:
+def current_teams(league_config: dict) -> list[dict]:
     season = dt.datetime.now(dt.timezone.utc).year
-    league = fetch_json("leagues", {"id": LEAGUE_ID, "ccode3": "ARG", "season": season})
+    league = fetch_json("leagues", {"id": league_config["id"], "ccode3": league_config["ccode"], "season": season})
     teams: dict[int, dict] = {}
     zone_names = ("Zona A", "Zona B")
     for section in league.get("table", []):
-        # FotMob returns the two current group tables first (then home/away tables).
-        for table_index, subgroup in enumerate(section.get("data", {}).get("tables", [])[:2]):
-            zone = zone_names[table_index]
+        data = section.get("data", {})
+        subgroups = data.get("tables", []) if league_config["zones"] else [{"table": data.get("table", {})}]
+        table_count = 2 if league_config["zones"] else 1
+        for table_index, subgroup in enumerate(subgroups[:table_count]):
+            zone = zone_names[table_index] if league_config["zones"] else ""
             for row in subgroup.get("table", {}).get("all", []):
-                teams[int(row["id"])] = {"id": int(row["id"]), "name": row["name"], "zone": zone}
+                teams[int(row["id"])] = {"id": int(row["id"]), "name": row["name"], "zone": zone, "league": league_config["key"], "league_id": league_config["id"], "ccode": league_config["ccode"]}
     if not teams:
-        raise RuntimeError(f"No teams found for Liga Profesional season {season}")
+        raise RuntimeError(f"No teams found for {league_config['name']} season {season}")
     return sorted(teams.values(), key=lambda team: (team["zone"], team["name"]))
 
 
 def team_matches(team: dict) -> dict:
-    payload = fetch_json("teams", {"id": team["id"], "ccode3": "ARG"})
+    payload = fetch_json("teams", {"id": team["id"], "ccode3": team["ccode"]})
     fixtures = payload.get("fixtures", {}).get("allFixtures", {}).get("fixtures", [])
     league_fixtures = [
         f for f in fixtures
-        if (f.get("tournament") or {}).get("leagueId") == LEAGUE_ID
+        if (f.get("tournament") or {}).get("leagueId") == team["league_id"]
     ]
     finished = [f for f in league_fixtures if f.get("status", {}).get("finished")]
     team["matches"] = [int(f["id"]) for f in finished[-TEAM_MATCH_LIMIT:]]
@@ -222,13 +228,13 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
             index for index, name in enumerate(compact_roster) if name in goalkeeper_names
         )
         active = {name: team.get("squad", {}).get(name) for name in compact_roster if name in team.get("squad", {})}
-        packed.append({"i": team["id"], "n": team["name"], "z": team["zone"], "r": compact_roster, "g": goalkeepers, "a": active, "m": matches})
+        packed.append({"i": team["id"], "n": team["name"], "l": team["league"], "z": team["zone"], "r": compact_roster, "g": goalkeepers, "a": active, "m": matches})
     return packed
 
 
 def main() -> None:
     previous = json.loads(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else {"teams": []}
-    teams = current_teams()
+    teams = [team for config in LEAGUES for team in current_teams(config)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
         teams = list(pool.map(team_matches, teams))
     ids = sorted({match_id for team in teams for match_id in team["matches"]})
@@ -236,6 +242,10 @@ def main() -> None:
         match["i"] for team in previous.get("teams", []) for match in team.get("m", [])
     }
     new_ids = [match_id for match_id in ids if match_id not in known_ids]
+    brazil_known = {match["i"] for team in previous.get("teams", []) if team.get("l") == "bra" for match in team.get("m", [])}
+    brazil_ids = sorted({match_id for team in teams if team["league"] == "bra" for match_id in team["matches"] if match_id not in brazil_known}, reverse=True)
+    brazil_allowed = set(brazil_ids[:next(config["bootstrap"] for config in LEAGUES if config["key"] == "bra")])
+    new_ids = [match_id for match_id in new_ids if match_id not in set(brazil_ids) or match_id in brazil_allowed]
     details: dict[int, dict] = {}
     failures: list[int] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -260,6 +270,7 @@ def main() -> None:
     snapshot = {
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "FotMob",
+        "leagues": [{"k": config["key"], "n": config["name"]} for config in LEAGUES],
         "failedMatchIds": failures,
         "teams": packed_teams,
         "fixtures": sorted(upcoming.values(), key=lambda fixture: fixture["date"] or "")[:90],
