@@ -39,21 +39,47 @@ def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
 def current_teams() -> list[dict]:
     season = dt.datetime.now(dt.timezone.utc).year
     league = fetch_json("leagues", {"id": LEAGUE_ID, "ccode3": "ARG", "season": season})
-    teams: dict[int, str] = {}
+    teams: dict[int, dict] = {}
+    zone_names = ("Zona A", "Zona B")
     for section in league.get("table", []):
-        for subgroup in section.get("data", {}).get("tables", []):
+        # FotMob returns the two current group tables first (then home/away tables).
+        for table_index, subgroup in enumerate(section.get("data", {}).get("tables", [])[:2]):
+            zone = zone_names[table_index]
             for row in subgroup.get("table", {}).get("all", []):
-                teams[int(row["id"])] = row["name"]
+                teams[int(row["id"])] = {"id": int(row["id"]), "name": row["name"], "zone": zone}
     if not teams:
         raise RuntimeError(f"No teams found for Liga Profesional season {season}")
-    return [{"id": team_id, "name": name} for team_id, name in sorted(teams.items())]
+    return sorted(teams.values(), key=lambda team: (team["zone"], team["name"]))
 
 
 def team_matches(team: dict) -> dict:
     payload = fetch_json("teams", {"id": team["id"], "ccode3": "ARG"})
     fixtures = payload.get("fixtures", {}).get("allFixtures", {}).get("fixtures", [])
-    finished = [f for f in fixtures if f.get("status", {}).get("finished")]
+    league_fixtures = [
+        f for f in fixtures
+        if (f.get("tournament") or {}).get("leagueId") == LEAGUE_ID
+    ]
+    finished = [f for f in league_fixtures if f.get("status", {}).get("finished")]
     team["matches"] = [int(f["id"]) for f in finished[-TEAM_MATCH_LIMIT:]]
+    team["upcoming"] = [
+        {
+            "id": int(f["id"]),
+            "date": (f.get("status") or {}).get("utcTime"),
+            "home": int((f.get("home") or {})["id"]),
+            "away": int((f.get("away") or {})["id"]),
+        }
+        for f in league_fixtures
+        if not (f.get("status") or {}).get("finished") and not (f.get("status") or {}).get("cancelled")
+    ]
+    squad = {}
+    for group in (payload.get("squad") or {}).get("squad", []):
+        role = (group.get("title") or "").lower()
+        if role not in {"keepers", "defenders", "midfielders", "forwards"}:
+            continue
+        for member in group.get("members") or []:
+            if member.get("name"):
+                squad[member["name"]] = role
+    team["squad"] = squad
     return team
 
 
@@ -195,7 +221,8 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
         goalkeepers = sorted(
             index for index, name in enumerate(compact_roster) if name in goalkeeper_names
         )
-        packed.append({"i": team["id"], "n": team["name"], "r": compact_roster, "g": goalkeepers, "m": matches})
+        active = {name: team.get("squad", {}).get(name) for name in compact_roster if name in team.get("squad", {})}
+        packed.append({"i": team["id"], "n": team["name"], "z": team["zone"], "r": compact_roster, "g": goalkeepers, "a": active, "m": matches})
     return packed
 
 
@@ -226,11 +253,16 @@ def main() -> None:
     if packed_teams == previous.get("teams", []) and sorted(failures) == sorted(previous.get("failedMatchIds", [])):
         print(f"no changes; checked {len(teams)} teams and fetched 0 match details")
         return
+    upcoming = {}
+    for team in teams:
+        for fixture in team.get("upcoming", []):
+            upcoming[fixture["id"]] = fixture
     snapshot = {
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "FotMob",
         "failedMatchIds": failures,
         "teams": packed_teams,
+        "fixtures": sorted(upcoming.values(), key=lambda fixture: fixture["date"] or "")[:90],
     }
     temporary = OUTPUT.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
