@@ -96,6 +96,8 @@ def team_matches(team: dict) -> dict:
     squad = {}
     for group in (payload.get("squad") or {}).get("squad", []):
         role = (group.get("title") or "").lower()
+        if role == "attackers":
+            role = "forwards"
         if role not in {"keepers", "defenders", "midfielders", "forwards"}:
             continue
         for member in group.get("members") or []:
