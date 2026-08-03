@@ -21,8 +21,8 @@ WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
 LEAGUES = (
     {"key": "arg", "name": "Liga Profesional", "id": 112, "ccode": "ARG", "zones": True, "bootstrap": None},
-    # Start slowly: one full Brasileirão round per daily run, then keep it incremental.
-    {"key": "bra", "name": "Brasileirão", "id": 268, "ccode": "BRA", "zones": False, "bootstrap": 10},
+    # Controlled backfill: enough history to become useful quickly without a large burst.
+    {"key": "bra", "name": "Brasileirão", "id": 268, "ccode": "BRA", "zones": False, "bootstrap": 40},
 )
 COMPETITIONS = {
     "Liga Profesional Apertura": ("liga-profesional", "Liga Profesional"),
@@ -269,7 +269,7 @@ def main() -> None:
     brazil_known = {match["i"] for team in previous.get("teams", []) if team.get("l") == "bra" for match in team.get("m", [])}
     brazil_ids = sorted({match_id for team in teams if team["league"] == "bra" for match_id in team["matches"] if match_id not in brazil_known}, reverse=True)
     brazil_allowed = set(brazil_ids[:next(config["bootstrap"] for config in LEAGUES if config["key"] == "bra")])
-    # One recent round for Brazil plus a small controlled batch of new cups.
+    # A controlled Brazil backfill plus a small batch of new cups.
     other_allowed = set(match_id for match_id in new_ids if match_id not in set(brazil_ids))
     if len(other_allowed) > 12:
         other_allowed = set(sorted(other_allowed, reverse=True)[:12])
