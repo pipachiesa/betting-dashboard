@@ -190,7 +190,9 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
             detail = details.get(match_id)
             if not detail:
                 if match_id in old_matches:
-                    matches.append(old_matches[match_id])
+                    old_match = dict(old_matches[match_id])
+                    old_match["c"] = team["competition_by_match"].get(match_id, ("liga-profesional", "Liga Profesional"))[0]
+                    matches.append(old_match)
                 continue
             is_home = detail["home"]["id"] == team["id"]
             side = 0 if is_home else 1
