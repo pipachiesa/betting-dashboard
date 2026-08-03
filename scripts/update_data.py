@@ -23,6 +23,16 @@ LEAGUES = (
     # Start slowly: one full Brasileirão round per daily run, then keep it incremental.
     {"key": "bra", "name": "Brasileirão", "id": 268, "ccode": "BRA", "zones": False, "bootstrap": 10},
 )
+COMPETITIONS = {
+    "Liga Profesional Apertura": ("liga-profesional", "Liga Profesional"),
+    "Liga Profesional Apertura Playoff": ("liga-profesional", "Liga Profesional"),
+    "Liga Profesional Clausura": ("liga-profesional", "Liga Profesional"),
+    "Copa Libertadores": ("libertadores", "Copa Libertadores"),
+    "Copa Sudamericana": ("sudamericana", "Copa Sudamericana"),
+    "Copa Argentina": ("copa-argentina", "Copa Argentina"),
+    "Serie A": ("brasileirao", "Brasileirão"),
+    "Copa do Brasil": ("copa-do-brasil", "Copa do Brasil"),
+}
 
 
 def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
@@ -61,12 +71,13 @@ def current_teams(league_config: dict) -> list[dict]:
 def team_matches(team: dict) -> dict:
     payload = fetch_json("teams", {"id": team["id"], "ccode3": team["ccode"]})
     fixtures = payload.get("fixtures", {}).get("allFixtures", {}).get("fixtures", [])
-    league_fixtures = [
-        f for f in fixtures
-        if (f.get("tournament") or {}).get("leagueId") == team["league_id"]
-    ]
-    finished = [f for f in league_fixtures if f.get("status", {}).get("finished")]
+    tracked_fixtures = [f for f in fixtures if (f.get("tournament") or {}).get("name") in COMPETITIONS]
+    finished = [f for f in tracked_fixtures if f.get("status", {}).get("finished")]
     team["matches"] = [int(f["id"]) for f in finished[-TEAM_MATCH_LIMIT:]]
+    team["competition_by_match"] = {
+        int(f["id"]): COMPETITIONS[(f.get("tournament") or {})["name"]]
+        for f in finished
+    }
     team["upcoming"] = [
         {
             "id": int(f["id"]),
@@ -74,7 +85,7 @@ def team_matches(team: dict) -> dict:
             "home": int((f.get("home") or {})["id"]),
             "away": int((f.get("away") or {})["id"]),
         }
-        for f in league_fixtures
+        for f in tracked_fixtures
         if not (f.get("status") or {}).get("finished") and not (f.get("status") or {}).get("cancelled")
     ]
     squad = {}
@@ -206,6 +217,7 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                     "d": detail["date"][:10],
                     "o": opponent["name"],
                     "h": 1 if is_home else 0,
+                    "c": team["competition_by_match"].get(match_id, ("liga-profesional", "Liga Profesional"))[0],
                     "x": [
                         detail["shots"][side],
                         detail["shotsOnTarget"][side],
@@ -245,7 +257,11 @@ def main() -> None:
     brazil_known = {match["i"] for team in previous.get("teams", []) if team.get("l") == "bra" for match in team.get("m", [])}
     brazil_ids = sorted({match_id for team in teams if team["league"] == "bra" for match_id in team["matches"] if match_id not in brazil_known}, reverse=True)
     brazil_allowed = set(brazil_ids[:next(config["bootstrap"] for config in LEAGUES if config["key"] == "bra")])
-    new_ids = [match_id for match_id in new_ids if match_id not in set(brazil_ids) or match_id in brazil_allowed]
+    # One recent round for Brazil plus a small controlled batch of new cups.
+    other_allowed = set(match_id for match_id in new_ids if match_id not in set(brazil_ids))
+    if len(other_allowed) > 12:
+        other_allowed = set(sorted(other_allowed, reverse=True)[:12])
+    new_ids = [match_id for match_id in new_ids if match_id in brazil_allowed or match_id in other_allowed]
     details: dict[int, dict] = {}
     failures: list[int] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -271,6 +287,7 @@ def main() -> None:
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "FotMob",
         "leagues": [{"k": config["key"], "n": config["name"]} for config in LEAGUES],
+        "competitions": [{"k": key, "n": name} for key, name in dict(COMPETITIONS.values()).items()],
         "failedMatchIds": failures,
         "teams": packed_teams,
         "fixtures": sorted(upcoming.values(), key=lambda fixture: fixture["date"] or "")[:90],
