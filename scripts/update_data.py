@@ -193,6 +193,12 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                 roster.append(player["name"])
             return roster_index[name]
 
+        # The squad endpoint is the source of truth for the active roster.  A
+        # player must be selectable even when he has not appeared in the
+        # currently downloaded match sample yet.
+        for name in team.get("squad", {}):
+            player_index({"name": name})
+
         match_order = {match_id: index for index, match_id in enumerate(team["matches"])}
         match_ids = list(dict.fromkeys([*old_matches, *team["matches"]]))
         match_ids.sort(key=lambda match_id: (old_matches.get(match_id, {}).get("d") or team["date_by_match"].get(match_id, ""), match_order.get(match_id, -1)))
@@ -242,7 +248,10 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                     "p": rows,
                 }
             )
-        used = sorted({row[0] for match in matches for row in match["p"]})
+        used = sorted(
+            {row[0] for match in matches for row in match["p"]}
+            | {roster_index[name] for name in team.get("squad", {})}
+        )
         remap = {old: new for new, old in enumerate(used)}
         compact_roster = [roster[index] for index in used]
         for match in matches:
