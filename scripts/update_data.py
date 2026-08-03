@@ -16,6 +16,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data.json"
 BASE = "https://www.fotmob.com/api/data"
 TEAM_MATCH_LIMIT = 20
+STORED_MATCH_LIMIT = 60
 WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
 LEAGUES = (
@@ -73,7 +74,11 @@ def team_matches(team: dict) -> dict:
     fixtures = payload.get("fixtures", {}).get("allFixtures", {}).get("fixtures", [])
     tracked_fixtures = [f for f in fixtures if (f.get("tournament") or {}).get("name") in COMPETITIONS]
     finished = [f for f in tracked_fixtures if f.get("status", {}).get("finished")]
-    team["matches"] = [int(f["id"]) for f in finished[-TEAM_MATCH_LIMIT:]]
+    team["matches"] = [int(f["id"]) for f in finished[-STORED_MATCH_LIMIT:]]
+    team["date_by_match"] = {
+        int(f["id"]): ((f.get("status") or {}).get("utcTime") or "")[:10]
+        for f in finished
+    }
     team["competition_by_match"] = {
         int(f["id"]): COMPETITIONS[(f.get("tournament") or {})["name"]]
         for f in finished
@@ -186,7 +191,10 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                 roster.append(player["name"])
             return roster_index[name]
 
-        for match_id in team["matches"]:
+        match_order = {match_id: index for index, match_id in enumerate(team["matches"])}
+        match_ids = list(dict.fromkeys([*old_matches, *team["matches"]]))
+        match_ids.sort(key=lambda match_id: (old_matches.get(match_id, {}).get("d") or team["date_by_match"].get(match_id, ""), match_order.get(match_id, -1)))
+        for match_id in match_ids[-STORED_MATCH_LIMIT:]:
             detail = details.get(match_id)
             if not detail:
                 if match_id in old_matches:
