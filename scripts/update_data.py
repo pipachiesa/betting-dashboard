@@ -19,6 +19,7 @@ TEAM_MATCH_LIMIT = 20
 STORED_MATCH_LIMIT = 60
 WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
+# Trigger a snapshot refresh whenever the collector configuration changes.
 SCHEMA_VERSION = 2
 LEAGUES = (
     {"key": "arg", "name": "Liga Profesional", "country": "Argentina", "id": 112, "ccode": "ARG", "season": "2026", "groups": ("Zona A", "Zona B"), "start": "2026-01-01", "per_run": 12},
