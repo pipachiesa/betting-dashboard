@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh the Liga Profesional betting dashboard snapshot from FotMob."""
+"""Refresh the multi-league betting dashboard snapshot from FotMob."""
 
 from __future__ import annotations
 
@@ -19,20 +19,67 @@ TEAM_MATCH_LIMIT = 20
 STORED_MATCH_LIMIT = 60
 WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
+SCHEMA_VERSION = 2
 LEAGUES = (
-    {"key": "arg", "name": "Liga Profesional", "id": 112, "ccode": "ARG", "zones": True, "bootstrap": None},
-    # Controlled backfill: enough history to become useful quickly without a large burst.
-    {"key": "bra", "name": "Brasileirão", "id": 268, "ccode": "BRA", "zones": False, "bootstrap": 40},
+    {"key": "arg", "name": "Liga Profesional", "country": "Argentina", "id": 112, "ccode": "ARG", "season": "2026", "groups": ("Zona A", "Zona B"), "start": "2026-01-01", "per_run": 12},
+    # Controlled backfills keep already-started leagues from causing a large burst.
+    {"key": "bra", "name": "Brasileirão", "country": "Brasil", "id": 268, "ccode": "BRA", "season": "2026", "groups": None, "start": "2026-01-01", "per_run": 40},
+    {"key": "usa", "name": "MLS", "country": "Estados Unidos", "id": 130, "ccode": "USA", "season": "2026", "groups": ("Conferencia Este", "Conferencia Oeste"), "start": "2026-02-21", "per_run": 40},
+    {"key": "eng", "name": "Premier League", "country": "Inglaterra", "id": 47, "ccode": "ENG", "season": "2026/2027", "groups": None, "start": "2026-08-21", "per_run": 12},
+    {"key": "esp", "name": "LaLiga", "country": "España", "id": 87, "ccode": "ESP", "season": "2026/2027", "groups": None, "start": "2026-08-15", "per_run": 12},
+    {"key": "ita", "name": "Serie A", "country": "Italia", "id": 55, "ccode": "ITA", "season": "2026/2027", "groups": None, "start": "2026-08-22", "per_run": 12},
+    {"key": "fra", "name": "Ligue 1", "country": "Francia", "id": 53, "ccode": "FRA", "season": "2026/2027", "groups": None, "start": "2026-08-21", "per_run": 12},
 )
 COMPETITIONS = {
-    "Liga Profesional Apertura": ("liga-profesional", "Liga Profesional"),
-    "Liga Profesional Apertura Playoff": ("liga-profesional", "Liga Profesional"),
-    "Liga Profesional Clausura": ("liga-profesional", "Liga Profesional"),
-    "Copa Libertadores": ("libertadores", "Copa Libertadores"),
-    "Copa Sudamericana": ("sudamericana", "Copa Sudamericana"),
-    "Copa Argentina": ("copa-argentina", "Copa Argentina"),
-    "Serie A": ("brasileirao", "Brasileirão"),
-    "Copa do Brasil": ("copa-do-brasil", "Copa do Brasil"),
+    "arg": {
+        "Liga Profesional Apertura": ("liga-profesional", "Liga Profesional"),
+        "Liga Profesional Apertura Playoff": ("liga-profesional", "Liga Profesional"),
+        "Liga Profesional Clausura": ("liga-profesional", "Liga Profesional"),
+        "Copa Libertadores": ("libertadores", "Copa Libertadores"),
+        "Copa Sudamericana": ("sudamericana", "Copa Sudamericana"),
+        "Copa Argentina": ("copa-argentina", "Copa Argentina"),
+    },
+    "bra": {
+        "Serie A": ("brasileirao", "Brasileirão"),
+        "Copa Libertadores": ("libertadores", "Copa Libertadores"),
+        "Copa Sudamericana": ("sudamericana", "Copa Sudamericana"),
+        "Copa do Brasil": ("copa-do-brasil", "Copa do Brasil"),
+    },
+    "usa": {
+        "Major League Soccer": ("mls", "MLS"),
+        "US Open Cup": ("us-open-cup", "US Open Cup"),
+        "Leagues Cup": ("leagues-cup", "Leagues Cup"),
+        "CONCACAF Champions Cup": ("concacaf-champions-cup", "CONCACAF Champions Cup"),
+    },
+    "eng": {
+        "Premier League": ("premier-league", "Premier League"),
+        "FA Cup": ("fa-cup", "FA Cup"),
+        "EFL Cup": ("efl-cup", "EFL Cup"),
+        "Champions League": ("champions-league", "Champions League"),
+        "Europa League": ("europa-league", "Europa League"),
+        "Conference League": ("conference-league", "Conference League"),
+    },
+    "esp": {
+        "LaLiga": ("la-liga", "LaLiga"),
+        "Copa del Rey": ("copa-del-rey", "Copa del Rey"),
+        "Champions League": ("champions-league", "Champions League"),
+        "Europa League": ("europa-league", "Europa League"),
+        "Conference League": ("conference-league", "Conference League"),
+    },
+    "ita": {
+        "Serie A": ("serie-a", "Serie A"),
+        "Coppa Italia": ("coppa-italia", "Coppa Italia"),
+        "Champions League": ("champions-league", "Champions League"),
+        "Europa League": ("europa-league", "Europa League"),
+        "Conference League": ("conference-league", "Conference League"),
+    },
+    "fra": {
+        "Ligue 1": ("ligue-1", "Ligue 1"),
+        "Coupe de France": ("coupe-de-france", "Coupe de France"),
+        "Champions League": ("champions-league", "Champions League"),
+        "Europa League": ("europa-league", "Europa League"),
+        "Conference League": ("conference-league", "Conference League"),
+    },
 }
 
 
@@ -52,27 +99,31 @@ def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
 
 
 def current_teams(league_config: dict) -> list[dict]:
-    season = dt.datetime.now(dt.timezone.utc).year
-    league = fetch_json("leagues", {"id": league_config["id"], "ccode3": league_config["ccode"], "season": season})
+    league = fetch_json("leagues", {"id": league_config["id"], "ccode3": league_config["ccode"], "season": league_config["season"]})
     teams: dict[int, dict] = {}
-    zone_names = ("Zona A", "Zona B")
     for section in league.get("table", []):
         data = section.get("data", {})
-        subgroups = data.get("tables", []) if league_config["zones"] else [{"table": data.get("table", {})}]
-        table_count = 2 if league_config["zones"] else 1
-        for table_index, subgroup in enumerate(subgroups[:table_count]):
-            zone = zone_names[table_index] if league_config["zones"] else ""
+        group_names = league_config.get("groups")
+        subgroups = data.get("tables", [])[:len(group_names)] if group_names else [{"table": data.get("table", {})}]
+        for table_index, subgroup in enumerate(subgroups):
+            zone = group_names[table_index] if group_names else ""
             for row in subgroup.get("table", {}).get("all", []):
                 teams[int(row["id"])] = {"id": int(row["id"]), "name": row["name"], "zone": zone, "league": league_config["key"], "league_id": league_config["id"], "ccode": league_config["ccode"]}
     if not teams:
-        raise RuntimeError(f"No teams found for {league_config['name']} season {season}")
+        raise RuntimeError(f"No teams found for {league_config['name']} season {league_config['season']}")
     return sorted(teams.values(), key=lambda team: (team["zone"], team["name"]))
 
 
 def team_matches(team: dict) -> dict:
     payload = fetch_json("teams", {"id": team["id"], "ccode3": team["ccode"]})
     fixtures = payload.get("fixtures", {}).get("allFixtures", {}).get("fixtures", [])
-    tracked_fixtures = [f for f in fixtures if (f.get("tournament") or {}).get("name") in COMPETITIONS]
+    competition_map = COMPETITIONS[team["league"]]
+    start = next(config["start"] for config in LEAGUES if config["key"] == team["league"])
+    tracked_fixtures = [
+        f for f in fixtures
+        if (f.get("tournament") or {}).get("name") in competition_map
+        and (((f.get("status") or {}).get("utcTime") or "")[:10] >= start)
+    ]
     finished = [f for f in tracked_fixtures if f.get("status", {}).get("finished")]
     team["matches"] = [int(f["id"]) for f in finished[-STORED_MATCH_LIMIT:]]
     team["date_by_match"] = {
@@ -80,7 +131,7 @@ def team_matches(team: dict) -> dict:
         for f in finished
     }
     team["competition_by_match"] = {
-        int(f["id"]): COMPETITIONS[(f.get("tournament") or {})["name"]]
+        int(f["id"]): competition_map[(f.get("tournament") or {})["name"]]
         for f in finished
     }
     team["upcoming"] = [
@@ -89,6 +140,8 @@ def team_matches(team: dict) -> dict:
             "date": (f.get("status") or {}).get("utcTime"),
             "home": int((f.get("home") or {})["id"]),
             "away": int((f.get("away") or {})["id"]),
+            "league": team["league"],
+            "competition": competition_map[(f.get("tournament") or {})["name"]][0],
         }
         for f in tracked_fixtures
         if not (f.get("status") or {}).get("finished") and not (f.get("status") or {}).get("cancelled")
@@ -113,6 +166,13 @@ def nested_player_stat(player: dict, key: str, default=None):
             if item.get("key") == key:
                 return item.get("stat", {}).get("value", default)
     return default
+
+
+def count_player_stat(player: dict, key: str, covered: bool):
+    """FotMob uses null for a covered counting stat whose value is zero."""
+    if not covered:
+        return None
+    return nested_player_stat(player, key, 0) or 0
 
 
 def team_stat(payload: dict, key: str) -> list:
@@ -142,6 +202,10 @@ def match_detail(match_id: int) -> dict:
             card_events[int(player["id"])] = sum(
                 1 for event in events if event.get("type") in {"yellowCard", "redCard", "secondYellowCard"}
             )
+    fouls = team_stat(payload, "fouls")
+    tackles = team_stat(payload, "matchstats.headers.tackles")
+    fouls_covered = any(value is not None for value in fouls)
+    tackles_covered = any(value is not None for value in tackles)
     players = []
     for player in (payload.get("content", {}).get("playerStats") or {}).values():
         minutes = nested_player_stat(player, "minutes_played", 0) or 0
@@ -156,6 +220,9 @@ def match_detail(match_id: int) -> dict:
                 "shotsOnTarget": nested_player_stat(player, "ShotsOnTarget", 0) or 0,
                 "saves": nested_player_stat(player, "saves") if player.get("isGoalkeeper") else None,
                 "cards": card_events.get(int(player["id"]), 0),
+                "foulsReceived": count_player_stat(player, "was_fouled", fouls_covered),
+                "foulsCommitted": count_player_stat(player, "fouls", fouls_covered),
+                "tackles": count_player_stat(player, "matchstats.headers.tackles", tackles_covered),
                 "goalkeeper": bool(player.get("isGoalkeeper")),
             }
         )
@@ -169,6 +236,8 @@ def match_detail(match_id: int) -> dict:
         "corners": team_stat(payload, "corners"),
         "yellowCards": team_stat(payload, "yellow_cards"),
         "redCards": team_stat(payload, "red_cards"),
+        "fouls": fouls,
+        "tackles": tackles,
         "players": players,
     }
 
@@ -184,6 +253,7 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
             roster[index] for index in old_team.get("g", []) if 0 <= index < len(roster)
         }
         old_matches = {match["i"]: match for match in old_team.get("m", [])}
+        default_competition = next(iter(COMPETITIONS[team["league"]].values()))
         matches = []
 
         def player_index(player: dict) -> int:
@@ -207,7 +277,7 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
             if not detail:
                 if match_id in old_matches:
                     old_match = dict(old_matches[match_id])
-                    old_match["c"] = team["competition_by_match"].get(match_id, ("liga-profesional", "Liga Profesional"))[0]
+                    old_match["c"] = team["competition_by_match"].get(match_id, default_competition)[0]
                     matches.append(old_match)
                 continue
             is_home = detail["home"]["id"] == team["id"]
@@ -221,7 +291,16 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                 index = player_index(player)
                 if player["goalkeeper"]:
                     goalkeeper_names.add(player["name"])
-                rows.append([index, player["shots"], player["shotsOnTarget"], player["saves"], player["cards"]])
+                rows.append([
+                    index,
+                    player["shots"],
+                    player["shotsOnTarget"],
+                    player["saves"],
+                    player["cards"],
+                    player["foulsReceived"],
+                    player["foulsCommitted"],
+                    player["tackles"],
+                ])
             own_yellow = detail["yellowCards"][side]
             own_red = detail["redCards"][side]
             other_side = 1 - side
@@ -235,7 +314,7 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                     "d": detail["date"][:10],
                     "o": opponent["name"],
                     "h": 1 if is_home else 0,
-                    "c": team["competition_by_match"].get(match_id, ("liga-profesional", "Liga Profesional"))[0],
+                    "c": team["competition_by_match"].get(match_id, default_competition)[0],
                     "x": [
                         detail["shots"][side],
                         detail["shotsOnTarget"][side],
@@ -244,6 +323,9 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                         opponent["goals"],
                         own_cards,
                         rival_cards,
+                        detail["fouls"][side],
+                        detail["fouls"][other_side],
+                        detail["tackles"][side],
                     ],
                     "p": rows,
                 }
@@ -267,22 +349,27 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
 
 def main() -> None:
     previous = json.loads(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else {"teams": []}
-    teams = [team for config in LEAGUES for team in current_teams(config)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        team_groups = list(pool.map(current_teams, LEAGUES))
+    teams = [team for group in team_groups for team in group]
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
         teams = list(pool.map(team_matches, teams))
-    ids = sorted({match_id for team in teams for match_id in team["matches"]})
-    known_ids = {
-        match["i"] for team in previous.get("teams", []) for match in team.get("m", [])
-    }
-    new_ids = [match_id for match_id in ids if match_id not in known_ids]
-    brazil_known = {match["i"] for team in previous.get("teams", []) if team.get("l") == "bra" for match in team.get("m", [])}
-    brazil_ids = sorted({match_id for team in teams if team["league"] == "bra" for match_id in team["matches"] if match_id not in brazil_known}, reverse=True)
-    brazil_allowed = set(brazil_ids[:next(config["bootstrap"] for config in LEAGUES if config["key"] == "bra")])
-    # A controlled Brazil backfill plus a small batch of new cups.
-    other_allowed = set(match_id for match_id in new_ids if match_id not in set(brazil_ids))
-    if len(other_allowed) > 12:
-        other_allowed = set(sorted(other_allowed, reverse=True)[:12])
-    new_ids = [match_id for match_id in new_ids if match_id in brazil_allowed or match_id in other_allowed]
+    previous_teams = {team["i"]: team for team in previous.get("teams", [])}
+    allowed_ids: set[int] = set()
+    for config in LEAGUES:
+        candidates: set[int] = set()
+        for team in (item for item in teams if item["league"] == config["key"]):
+            old_matches = {match["i"]: match for match in previous_teams.get(team["id"], {}).get("m", [])}
+            candidates.update(match_id for match_id in team["matches"] if match_id not in old_matches)
+            # Schema upgrades are gradual too: refresh old details until the new
+            # fouls/tackles columns exist, instead of turning missing data into 0.
+            candidates.update(
+                match_id for match_id, match in old_matches.items()
+                if match_id in team["matches"]
+                and (len(match.get("x", [])) < 10 or any(len(row) < 8 for row in match.get("p", [])))
+            )
+        allowed_ids.update(sorted(candidates, reverse=True)[:config["per_run"]])
+    new_ids = sorted(allowed_ids)
     details: dict[int, dict] = {}
     failures: list[int] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -300,18 +387,34 @@ def main() -> None:
     if packed_teams == previous.get("teams", []) and sorted(failures) == sorted(previous.get("failedMatchIds", [])):
         print(f"no changes; checked {len(teams)} teams and fetched 0 match details")
         return
-    upcoming = {}
+    upcoming_by_league: dict[str, dict[int, dict]] = {}
     for team in teams:
         for fixture in team.get("upcoming", []):
-            upcoming[fixture["id"]] = fixture
+            upcoming_by_league.setdefault(fixture["league"], {})[fixture["id"]] = fixture
+    upcoming = [
+        fixture
+        for league_fixtures in upcoming_by_league.values()
+        for fixture in sorted(league_fixtures.values(), key=lambda item: item["date"] or "")[:40]
+    ]
     snapshot = {
+        "schemaVersion": SCHEMA_VERSION,
         "generatedAt": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": "FotMob",
-        "leagues": [{"k": config["key"], "n": config["name"]} for config in LEAGUES],
-        "competitions": [{"k": key, "n": name} for key, name in dict(COMPETITIONS.values()).items()],
+        "leagues": [
+            {
+                "k": config["key"],
+                "n": config["name"],
+                "country": config["country"],
+                "competitions": [
+                    {"k": key, "n": name}
+                    for key, name in dict(COMPETITIONS[config["key"]].values()).items()
+                ],
+            }
+            for config in LEAGUES
+        ],
         "failedMatchIds": failures,
         "teams": packed_teams,
-        "fixtures": sorted(upcoming.values(), key=lambda fixture: fixture["date"] or "")[:90],
+        "fixtures": sorted(upcoming, key=lambda fixture: fixture["date"] or ""),
     }
     temporary = OUTPUT.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
