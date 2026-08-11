@@ -1,6 +1,9 @@
 name: Update betting data
 
 on:
+  push:
+    paths:
+      - 'scripts/update_data.py'
   schedule:
     - cron: "17 9 * * *"
   workflow_dispatch:
