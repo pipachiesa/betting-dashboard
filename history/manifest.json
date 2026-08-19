@@ -1,0 +1,383 @@
+{
+  "generatedAt": "2026-08-19T20:47:22Z",
+  "elapsedSeconds": 5521,
+  "client": {
+    "hits": 290,
+    "downloads": 14341,
+    "errors": 0
+  },
+  "seasons": [
+    {
+      "league": "arg",
+      "season": "2026",
+      "fixtures": 330,
+      "matches": 330,
+      "players": 10321,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "arg",
+      "season": "2025",
+      "fixtures": 510,
+      "matches": 510,
+      "players": 15861,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "arg",
+      "season": "2024",
+      "fixtures": 378,
+      "matches": 378,
+      "players": 11686,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "arg",
+      "season": "2023",
+      "fixtures": 378,
+      "matches": 378,
+      "players": 11592,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "arg",
+      "season": "2022",
+      "fixtures": 378,
+      "matches": 378,
+      "players": 11505,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "arg",
+      "season": "2021",
+      "fixtures": 325,
+      "matches": 325,
+      "players": 9954,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "bra",
+      "season": "2026",
+      "fixtures": 225,
+      "matches": 225,
+      "players": 7115,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "bra",
+      "season": "2025",
+      "fixtures": 380,
+      "matches": 379,
+      "players": 11950,
+      "failed": [],
+      "no_stats": 1
+    },
+    {
+      "league": "bra",
+      "season": "2024",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11999,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "bra",
+      "season": "2023",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11907,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "bra",
+      "season": "2022",
+      "fixtures": 380,
+      "matches": 378,
+      "players": 11878,
+      "failed": [
+        3821490
+      ],
+      "no_stats": 1
+    },
+    {
+      "league": "bra",
+      "season": "2021",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11802,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2026",
+      "fixtures": 284,
+      "matches": 284,
+      "players": 8739,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2025",
+      "fixtures": 540,
+      "matches": 540,
+      "players": 16609,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2024",
+      "fixtures": 522,
+      "matches": 522,
+      "players": 15948,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2023",
+      "fixtures": 521,
+      "matches": 521,
+      "players": 15799,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2022",
+      "fixtures": 489,
+      "matches": 489,
+      "players": 14687,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "usa",
+      "season": "2021",
+      "fixtures": 472,
+      "matches": 472,
+      "players": 14064,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "eng",
+      "season": "2026/2027",
+      "fixtures": 0,
+      "matches": 0,
+      "skipped": true
+    },
+    {
+      "league": "eng",
+      "season": "2025/2026",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11492,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "eng",
+      "season": "2024/2025",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11567,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "eng",
+      "season": "2023/2024",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11384,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "eng",
+      "season": "2022/2023",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11345,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "eng",
+      "season": "2021/2022",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 10485,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "esp",
+      "season": "2026/2027",
+      "fixtures": 5,
+      "matches": 5,
+      "cached": true
+    },
+    {
+      "league": "esp",
+      "season": "2025/2026",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11953,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "esp",
+      "season": "2024/2025",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11900,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "esp",
+      "season": "2023/2024",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11859,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "esp",
+      "season": "2022/2023",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11804,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "esp",
+      "season": "2021/2022",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11806,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "ita",
+      "season": "2026/2027",
+      "fixtures": 0,
+      "matches": 0,
+      "skipped": true
+    },
+    {
+      "league": "ita",
+      "season": "2025/2026",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11928,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "ita",
+      "season": "2024/2025",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11887,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "ita",
+      "season": "2023/2024",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11910,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "ita",
+      "season": "2022/2023",
+      "fixtures": 381,
+      "matches": 381,
+      "players": 11916,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "ita",
+      "season": "2021/2022",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11717,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "fra",
+      "season": "2026/2027",
+      "fixtures": 0,
+      "matches": 0,
+      "skipped": true
+    },
+    {
+      "league": "fra",
+      "season": "2025/2026",
+      "fixtures": 306,
+      "matches": 306,
+      "players": 9408,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "fra",
+      "season": "2024/2025",
+      "fixtures": 306,
+      "matches": 306,
+      "players": 9413,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "fra",
+      "season": "2023/2024",
+      "fixtures": 306,
+      "matches": 306,
+      "players": 9394,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "fra",
+      "season": "2022/2023",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11548,
+      "failed": [],
+      "no_stats": 0
+    },
+    {
+      "league": "fra",
+      "season": "2021/2022",
+      "fixtures": 380,
+      "matches": 380,
+      "players": 11527,
+      "failed": [],
+      "no_stats": 0
+    }
+  ]
+}
