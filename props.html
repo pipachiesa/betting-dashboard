@@ -94,7 +94,7 @@ tbody td{padding:3px 3px 3px 0}
   overflow:hidden;text-overflow:ellipsis}
 .pname b{font-weight:550;font-size:13.5px}
 .pname i{font-style:normal;color:var(--dim);font-size:11.5px;margin-left:7px}
-.cell{display:block;border-radius:8px;padding:9px 4px;font-size:13px;
+.cell{display:block;border-radius:8px;padding:7px 4px 8px;font-size:13px;
   font-variant-numeric:tabular-nums;font-weight:600;transition:transform .1s;cursor:default}
 .cell:hover{transform:scale(1.06)}
 .lam{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;
@@ -125,6 +125,29 @@ tbody td{padding:3px 3px 3px 0}
 .mini{display:flex;gap:2px;margin-top:10px;height:26px;align-items:flex-end}
 .mini i{flex:1;background:var(--blue);border-radius:2px;opacity:.85}
 .note{color:var(--dim);font-size:11.5px;line-height:1.55;margin-top:11px}
+.cell{position:relative}
+.cell.has-odds::after{content:'';position:absolute;top:3px;right:3px;width:5px;height:5px;
+  border-radius:50%;background:#fbbf24;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.cell.pick{outline:2px solid var(--blue);outline-offset:1px}
+.cell{cursor:pointer}
+.vtabs{display:flex;gap:4px;margin-left:auto}
+.vtab{padding:5px 11px;border:1px solid var(--border);background:transparent;color:var(--muted);
+  border-radius:8px;font:inherit;font-size:12.5px;cursor:pointer}
+.vtab.on{background:var(--raise);color:var(--text);font-weight:600}
+.odds-in{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 4px}
+.odds-in label{display:block;color:var(--dim);font-size:11px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
+.odds-in input{width:100%;background:var(--side);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;padding:9px 10px;font:inherit;font-size:14px;font-variant-numeric:tabular-nums;
+  outline:0;text-align:center}
+.odds-in input:focus{border-color:var(--blue)}
+.edge-big{font-size:27px;font-weight:680;letter-spacing:-.03em;font-variant-numeric:tabular-nums;
+  margin:14px 0 2px}
+.edge-pos{color:#4ade80}.edge-neg{color:#f87171}.edge-nil{color:var(--muted)}
+.btn-clear{width:100%;margin-top:11px;padding:8px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);border-radius:9px;font:inherit;font-size:12.5px;cursor:pointer}
+.btn-clear:hover{background:var(--raise);color:var(--text)}
+.hint{color:var(--dim);font-size:11.5px;line-height:1.5;margin-top:9px}
 @media(max-width:1080px){.cols{grid-template-columns:1fr}.shell{grid-template-columns:1fr}
   .side{border-right:0;border-bottom:1px solid var(--border-soft)}}
 </style>
@@ -161,8 +184,25 @@ tbody td{padding:3px 3px 3px 0}
     </div>
 
     <div class="cols">
+      <div>
+      <section class="panel" style="margin-bottom:16px">
+        <div class="phead"><h2>Mercados de equipo</h2>
+          <div class="vtabs">
+            <button class="vtab on" id="s-team">Por equipo</button>
+            <button class="vtab" id="s-match">Total del partido</button>
+          </div>
+        </div>
+        <p class="sub" id="teamsub2">Donde el modelo tiene su ventaja más grande.</p>
+        <div class="twrap"><table id="tgrid"></table></div>
+      </section>
+
       <section class="panel">
-        <div class="phead"><h2 id="teamname">—</h2></div>
+        <div class="phead"><h2 id="teamname">—</h2>
+          <div class="vtabs">
+            <button class="vtab on" id="v-prob">Probabilidad</button>
+            <button class="vtab" id="v-edge">Edge vs cuota</button>
+          </div>
+        </div>
         <p class="sub" id="teamsub">Probabilidad de superar cada línea, calculada por el modelo.</p>
         <div class="tabs" id="tabs"></div>
         <div class="twrap"><table id="grid"></table></div>
@@ -173,8 +213,10 @@ tbody td{padding:3px 3px 3px 0}
           <span style="margin-left:auto">λ = valor esperado</span>
         </div>
       </section>
+      </div>
 
       <div>
+        <div class="card" id="odds"></div>
         <div class="card" id="quality"></div>
         <div class="card" id="ctx"></div>
       </div>
@@ -207,14 +249,71 @@ const MARKETS={
           edge:'+0,2%', leagues:'6/7', verdict:'bad',
           why:'Indistinguible del promedio propio del jugador.'}
 };
+/* Team markets carry the numbers from the 7-league walk-forward backtest.
+   Goals is marked bad on purpose: it is the one market that was tested against
+   real closing odds and lost by 3.1%, so a positive edge there is a mirage. */
+const TEAM_MK={
+  shots  :{name:'Remates',        lines:[8.5,10.5,12.5,14.5], mlines:[20.5,22.5,24.5,26.5],
+           edge:'+13,9%', verdict:'good', why:'El mercado más predecible del modelo, entre +12% y +19% en las siete ligas.'},
+  sot    :{name:'Remates al arco',lines:[2.5,3.5,4.5,5.5],    mlines:[7.5,8.5,9.5,10.5],
+           edge:'+8,1%',  verdict:'good', why:'Segunda mejor señal a nivel equipo, consistente en las siete ligas.'},
+  fouls  :{name:'Faltas',         lines:[9.5,11.5,13.5],      mlines:[20.5,22.5,24.5],
+           edge:'+6,7%',  verdict:'mid',  why:'Sólido y estable.'},
+  tackles:{name:'Entradas',       lines:[11.5,14.5,17.5],     mlines:[28.5,32.5,36.5],
+           edge:'+5,7%',  verdict:'mid',  why:'Sólido, aunque pocas casas lo ofrecen.'},
+  corners:{name:'Córners',        lines:[3.5,4.5,5.5,6.5],    mlines:[7.5,8.5,9.5,10.5,11.5],
+           edge:'+5,6%',  verdict:'mid',  why:'Bueno, pero sobreconfía en la cola alta: la calibración nunca bajó de 0,048 de error.'},
+  goals  :{name:'Goles',          lines:[0.5,1.5,2.5],        mlines:[1.5,2.5,3.5],
+           edge:'+4,6%',  verdict:'bad',  why:'Único mercado probado contra cuotas reales: pierde por 3,1% y da ROI −7,9%. Un edge positivo acá es espejismo.'},
+  cards  :{name:'Tarjetas',       lines:[1.5,2.5,3.5],        mlines:[3.5,4.5,5.5],
+           edge:'+1,9%',  verdict:'bad',  why:'El más flojo. El árbitro domina este mercado y todavía no entra en el modelo.'}
+};
 const LEAGUE_NAMES={arg:'Argentina',bra:'Brasil',eng:'Inglaterra',esp:'España',
                     fra:'Francia',ita:'Italia',usa:'Estados Unidos'};
 const VERDICT={good:['v-good','Ventaja clara'],mid:['v-mid','Ventaja chica pero real'],
                bad:['v-bad','Sin ventaja · ruido']};
 
-let data=null,model=null,team=null,market='saves';
+let data=null,model=null,team=null,market='saves',view='prob',pick=null,scope='team';
+
+/* Odds live in localStorage: this is a personal tool and the entries are worth
+   keeping between sessions, but they are nobody else's business. */
+const STORE='hrbet.odds.v1';
+const odds=JSON.parse(localStorage.getItem(STORE)||'{}');
+const oddsKey=(pid,line)=>['p',team.i,$('rival').value,market,line,pid].join('|');
+const teamOddsKey=(mk,line,who)=>['t',team.i,$('rival').value,mk,line,who].join('|');
+function saveOdds(){localStorage.setItem(STORE,JSON.stringify(odds))}
+
+/* Hard Rock US prices in American odds; decimal is accepted too so the same
+   field works if the book ever shows it. */
+function toDecimal(raw){
+  if(raw===''||raw===null||raw===undefined)return null;
+  const v=Number(String(raw).trim().replace(',','.'));
+  if(!isFinite(v)||v===0)return null;
+  if(v>=100)return 1+v/100;            // +150
+  if(v<=-100)return 1+100/Math.abs(v); // -120
+  if(v>1.01&&v<100)return v;           // 2.50
+  return null;
+}
+function fmtPct(x){return (x>=0?'+':'')+(x*100).toFixed(1)+'%'}
+
+/* Two-way de-vig: with only one side there is no way to separate the price
+   from the margin, so the market probability stays null until both are in. */
+function marketProb(over,under){
+  const a=toDecimal(over),b=toDecimal(under);
+  if(!a||!b)return null;
+  const ia=1/a,ib=1/b;
+  return ia/(ia+ib);
+}
 
 /* light -> intense blue, matching the reference palette */
+function edgeHeat(e){
+  // diverging, only for the edge view; blue stays the probability palette
+  if(e===null)return {bg:'#2b2f33',fg:'#6b7178'};
+  const t=Math.max(-0.2,Math.min(0.2,e))/0.2;
+  const c=t>=0?[Math.round(28+(34-28)*t),Math.round(52+(197-52)*t),Math.round(40+(94-40)*t)]
+              :[Math.round(28+(239-28)*-t),Math.round(45+(68-45)*-t),Math.round(45+(68-45)*-t)];
+  return {bg:`rgb(${c.join(',')})`,fg:Math.abs(t)>0.35?'#fff':'#c9ced4'};
+}
 function heat(p){
   const stops=[[238,244,254],[207,225,250],[159,195,246],[95,155,241],[42,111,224],[11,71,176]];
   const t=Math.max(0,Math.min(1,p))*(stops.length-1),i=Math.min(stops.length-2,Math.floor(t)),f=t-i;
@@ -226,11 +325,37 @@ function nbTail(lam,line){          // Poisson: player counts are small
   for(let k=0;k<=t;k++){if(k)term*=lam/k;s+=term}
   return Math.min(1,Math.max(0,1-s));
 }
+/* Team counts are overdispersed, so they use the negative binomial dispersion
+   fitted in model.json.  r === null means Poisson was already wide enough. */
+function pmf(lam,r,n){
+  lam=Math.max(1e-9,lam);const out=new Array(n+1);
+  if(r===null||r===undefined||r<=0){
+    let term=Math.exp(-lam);
+    for(let k=0;k<=n;k++){if(k)term*=lam/k;out[k]=term}
+  }else{
+    const p=r/(r+lam);let term=Math.pow(p,r);
+    for(let k=0;k<=n;k++){if(k)term*=(r+k-1)/k*(1-p);out[k]=term}
+  }
+  return out;
+}
+function tailFrom(arr,line){
+  const t=Math.floor(line);let s=0;
+  for(let k=0;k<=t&&k<arr.length;k++)s+=arr[k];
+  return Math.min(1,Math.max(0,1-s));
+}
+/* The sum of two negative binomials is not negative binomial, so the match
+   total is convolved numerically instead of approximated. */
+function convolve(a,b){
+  const out=new Array(a.length).fill(0);
+  for(let i=0;i<a.length;i++)for(let j=0;j+i<out.length;j++)out[i+j]+=a[i]*b[j];
+  return out;
+}
 function teamLambda(league,mk,tid,oid,isHome){
   const m=model?.leagues?.[league]?.markets?.[mk];if(!m)return null;
   const a=m.teams[tid],d=m.teams[oid];if(!a||!d)return null;
   return m.mu*a[0]*d[1]*(isHome?m.home:1/m.home);
 }
+function dispersion(league,mk){return model?.leagues?.[league]?.markets?.[mk]?.r ?? null}
 
 function buildNav(){
   const nav=$('nav');nav.textContent='';
@@ -288,7 +413,7 @@ function buildTabs(){
     b.className='tab'+(k===market?' on':'');
     const col=m.verdict==='good'?'#4ade80':m.verdict==='mid'?'#fbbf24':'#f87171';
     b.innerHTML=`<span class="pip" style="background:${col}"></span>${m.name}`;
-    b.onclick=()=>{market=k;buildTabs();render()};
+    b.onclick=()=>{market=k;pick=null;buildTabs();render()};
     box.append(b);
   });
 }
@@ -305,6 +430,7 @@ function render(){
   $('teamname').textContent=team.n;
   $('teamsub').textContent=`${M.name} · ${isHome?'de local':'de visitante'} vs ${rival?rival.n:'—'} · probabilidad de superar cada línea`;
 
+  renderTeamGrid(oid,isHome);
   const lamTeam=M.side==='own'?teamLambda(team.l,M.base,team.i,oid,isHome)
                               :teamLambda(team.l,M.base,oid,team.i,!isHome);
   const grid=$('grid');grid.textContent='';
@@ -326,7 +452,7 @@ function render(){
 
   if(!rows.length){
     grid.innerHTML='<tbody><tr><td class="empty">Sin jugadores con muestra suficiente para este mercado.</td></tr></tbody>';
-    renderCards(lamTeam);return;
+    renderCards(lamTeam);renderOdds();return;
   }
 
   const thead=document.createElement('thead'),tr=document.createElement('tr');
@@ -342,16 +468,142 @@ function render(){
     const lm=document.createElement('td');lm.className='lam';lm.textContent=r.lam.toFixed(2);
     row.append(lm);
     M.lines.forEach(line=>{
-      const p=nbTail(r.lam,line),c=heat(p),td=document.createElement('td');
+      const p=nbTail(r.lam,line),td=document.createElement('td');
+      const key=oddsKey(r.id,line),entry=odds[key];
+      const mp=entry?marketProb(entry.over,entry.under):null;
+      const edge=mp===null?null:p-mp;
+      const c=view==='edge'?edgeHeat(edge):heat(p);
       const s=document.createElement('span');s.className='cell';
-      s.style.background=c.bg;s.style.color=c.fg;s.textContent=Math.round(p*100)+'%';
-      s.title=`${r.name} · Over ${line} ${M.name.toLowerCase()}: ${(p*100).toFixed(1)}% (λ ${r.lam.toFixed(2)}, ${r.n} pj)`;
+      if(entry&&(entry.over||entry.under))s.classList.add('has-odds');
+      if(pick&&pick.id===r.id&&pick.line===line)s.classList.add('pick');
+      s.style.background=c.bg;s.style.color=c.fg;
+      s.textContent=view==='edge'?(edge===null?'—':fmtPct(edge)):Math.round(p*100)+'%';
+      s.title=`${r.name} · Over ${line} ${M.name.toLowerCase()}\nModelo ${(p*100).toFixed(1)}% (λ ${r.lam.toFixed(2)}, ${r.n} pj)`+
+              (mp!==null?`\nMercado ${(mp*100).toFixed(1)}% · edge ${fmtPct(edge)}`:'\nClic para cargar la cuota');
+      s.onclick=()=>{pick={id:r.id,name:r.name,line,p};render()};
       td.append(s);row.append(td);
     });
     tbody.append(row);
   });
   grid.append(thead,tbody);
-  renderCards(lamTeam);
+  renderCards(lamTeam);renderOdds();
+}
+
+function renderTeamGrid(oid,isHome){
+  const grid=$('tgrid');grid.textContent='';
+  const rival=data.teams.find(t=>t.i===oid);
+  const byMatch=scope==='match';
+  $('teamsub2').textContent=byMatch
+    ? `Totales del partido · ${team.n} vs ${rival?rival.n:'—'} · suma de los dos equipos`
+    : `${team.n} ${isHome?'de local':'de visitante'} vs ${rival?rival.n:'—'} · total de cada equipo`;
+
+  const maxLines=Math.max(...Object.values(TEAM_MK).map(m=>(byMatch?m.mlines:m.lines).length));
+  const thead=document.createElement('thead'),tr=document.createElement('tr');
+  tr.innerHTML='<th>Mercado</th><th style="text-align:right;padding-right:12px">λ</th>'+
+    Array.from({length:maxLines},()=>'<th>Línea · Over</th>').join('')+'<th style="text-align:right">Ventaja</th>';
+  thead.append(tr);
+  const tbody=document.createElement('tbody');
+  let any=false;
+
+  Object.entries(TEAM_MK).forEach(([mk,M])=>{
+    const lamOwn=teamLambda(team.l,mk,team.i,oid,isHome);
+    const lamOpp=teamLambda(team.l,mk,oid,team.i,!isHome);
+    if(lamOwn===null||lamOpp===null)return;
+    any=true;
+    const r=dispersion(team.l,mk);
+    const lines=byMatch?M.mlines:M.lines;
+    const lam=byMatch?lamOwn+lamOpp:lamOwn;
+    const N=Math.max(40,Math.ceil(lam*4)+20);
+    const dist=byMatch?convolve(pmf(lamOwn,r,N),pmf(lamOpp,r,N)):pmf(lamOwn,r,N);
+    const who=byMatch?'match':(isHome?'H':'A');
+
+    const row=document.createElement('tr');
+    const nm=document.createElement('td');nm.className='pname';
+    const col=M.verdict==='good'?'#4ade80':M.verdict==='mid'?'#fbbf24':'#f87171';
+    nm.innerHTML=`<b>${M.name}</b><i style="color:${col}">●</i>`;
+    nm.title=M.why;
+    row.append(nm);
+    const lm=document.createElement('td');lm.className='lam';lm.textContent=lam.toFixed(2);
+    row.append(lm);
+
+    lines.forEach(line=>{
+      const prob=tailFrom(dist,line),td=document.createElement('td');
+      const key=teamOddsKey(mk,line,who),entry=odds[key];
+      const mp=entry?marketProb(entry.over,entry.under):null;
+      const edge=mp===null?null:prob-mp;
+      const c=view==='edge'?edgeHeat(edge):heat(prob);
+      const sp=document.createElement('span');sp.className='cell';
+      if(entry&&(entry.over||entry.under))sp.classList.add('has-odds');
+      if(pick&&pick.scope==='t'&&pick.mk===mk&&pick.line===line&&pick.who===who)sp.classList.add('pick');
+      sp.style.background=c.bg;sp.style.color=c.fg;
+      sp.innerHTML=`<em style="font-style:normal;opacity:.62;font-size:10.5px;font-weight:600;`+
+        `display:block;line-height:1.15">${String(line).replace('.',',')}</em>`+
+        (view==='edge'?(edge===null?'—':fmtPct(edge)):Math.round(prob*100)+'%');
+      sp.title=`${M.name} · Over ${line}\nModelo ${(prob*100).toFixed(1)}% (λ ${lam.toFixed(2)})`+
+               (mp!==null?`\nMercado ${(mp*100).toFixed(1)}% · edge ${fmtPct(edge)}`:'\nClic para cargar la cuota');
+      sp.onclick=()=>{pick={scope:'t',mk,line,who,p:prob,
+        name:(byMatch?'Partido':team.n)+' · '+M.name,verdict:M.verdict};render()};
+      td.append(sp);row.append(td);
+    });
+    for(let k=lines.length;k<maxLines;k++)row.append(document.createElement('td'));
+    const ed=document.createElement('td');
+    ed.className='lam';ed.style.color=col;ed.textContent=M.edge;
+    ed.title='Mejora en Brier sobre la media de liga · '+M.why;
+    row.append(ed);
+    tbody.append(row);
+  });
+
+  if(!any){grid.innerHTML='<tbody><tr><td class="empty">Este cruce no está en el modelo.</td></tr></tbody>';return}
+  grid.append(thead,tbody);
+}
+
+function renderOdds(){
+  const box=$('odds');
+  if(!pick){
+    box.innerHTML='<h3>Comparar con la cuota</h3>'+
+      '<p>Clic en cualquier celda para cargar lo que te ofrece Hard Rock y ver el edge.</p>'+
+      '<p class="hint">Acepta formato americano (+150, -120) o decimal (2.50). '+
+      'Hacen falta las dos patas, Over y Under, para poder quitarle el margen a la cuota.</p>';
+    return;
+  }
+  const isTeam=pick.scope==='t';
+  const M=isTeam?TEAM_MK[pick.mk]:MARKETS[market];
+  const key=isTeam?teamOddsKey(pick.mk,pick.line,pick.who):oddsKey(pick.id,pick.line);
+  const entry=odds[key]||{over:'',under:''};
+  const mp=marketProb(entry.over,entry.under);
+  const edge=mp===null?null:pick.p-mp;
+  const dec=toDecimal(entry.over);
+  const ev=(dec&&mp!==null)?pick.p*(dec-1)-(1-pick.p):null;
+  const cls=edge===null?'edge-nil':edge>0?'edge-pos':'edge-neg';
+  box.innerHTML=
+    `<h3>${pick.name}</h3><p>${isTeam?(pick.who==='match'?'Total del partido':'Total de equipo'):M.name} · Over ${String(pick.line).replace('.',',')}</p>`+
+    `<div class="odds-in">`+
+      `<div><label>Cuota Over</label><input id="o-over" value="${entry.over||''}" placeholder="+150"></div>`+
+      `<div><label>Cuota Under</label><input id="o-under" value="${entry.under||''}" placeholder="-190"></div>`+
+    `</div>`+
+    `<div class="edge-big ${cls}">${edge===null?'—':fmtPct(edge)}</div>`+
+    `<p class="hint" style="margin-top:0">edge = probabilidad del modelo − probabilidad del mercado sin margen</p>`+
+    `<div class="rows">`+
+      `<div class="row"><span>Modelo</span><b>${(pick.p*100).toFixed(1)}%</b></div>`+
+      `<div class="row"><span>Mercado (sin margen)</span><b>${mp===null?'—':(mp*100).toFixed(1)+'%'}</b></div>`+
+      `<div class="row"><span>Margen de la casa</span><b>${mp===null?'—':(((1/toDecimal(entry.over))+(1/toDecimal(entry.under))-1)*100).toFixed(1)+'%'}</b></div>`+
+      `<div class="row"><span>EV por unidad</span><b class="${ev===null?'':ev>0?'edge-pos':'edge-neg'}">${ev===null?'—':fmtPct(ev)}</b></div>`+
+    `</div>`+
+    `<button class="btn-clear" id="o-clear">Borrar esta cuota</button>`+
+    ((isTeam?M.verdict:MARKETS[market].verdict)==='bad'
+      ?`<p class="hint" style="color:#f87171">Ojo: ${isTeam?M.why:'en este mercado el modelo no le gana al promedio propio del jugador, así que un edge positivo acá probablemente sea ruido.'}</p>`:'');
+
+  const commit=()=>{
+    odds[key]={over:$('o-over').value.trim(),under:$('o-under').value.trim()};
+    if(!odds[key].over&&!odds[key].under)delete odds[key];
+    saveOdds();render();
+  };
+  ['o-over','o-under'].forEach(id=>{
+    const el=$(id);
+    el.onchange=commit;
+    el.onkeydown=e=>{if(e.key==='Enter')commit()};
+  });
+  $('o-clear').onclick=()=>{delete odds[key];saveOdds();render()};
 }
 
 function renderCards(lamTeam){
@@ -378,7 +630,11 @@ function renderCards(lamTeam){
     `<p class="note">Las probabilidades son del modelo, no del mercado. Nunca se validaron contra una cuota de cierre real en estos mercados.</p>`;
 }
 
-$('rival').onchange=render;$('venue').onchange=render;
+$('rival').onchange=()=>{pick=null;render()};$('venue').onchange=()=>{pick=null;render()};
+$('s-team').onclick=()=>{scope='team';pick=null;$('s-team').classList.add('on');$('s-match').classList.remove('on');render()};
+$('s-match').onclick=()=>{scope='match';pick=null;$('s-match').classList.add('on');$('s-team').classList.remove('on');render()};
+$('v-prob').onclick=()=>{view='prob';$('v-prob').classList.add('on');$('v-edge').classList.remove('on');render()};
+$('v-edge').onclick=()=>{view='edge';$('v-edge').classList.add('on');$('v-prob').classList.remove('on');render()};
 
 const RAW='https://raw.githubusercontent.com/pipachiesa/betting-dashboard/main/';
 Promise.all([
