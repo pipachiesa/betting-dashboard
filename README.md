@@ -77,25 +77,47 @@ del arquero se calculan sobre los remates al arco **del rival**, no sobre nada p
 
 ### Resultados del backtest
 
-Walk-forward sobre Liga Profesional, refit cada 14 días, nada ajustado con datos posteriores al
-partido. Brier score, contra dos baselines:
+Walk-forward sobre las 7 ligas, 14.633 partidos, refit cada 14 días. Nada se ajusta con datos
+posteriores al partido. Brier score agregado, ponderado por cantidad de predicciones:
 
-| Mercado | Modelo | Promedio del equipo | Media de liga |
-|---|---|---|---|
-| Remates | **0.1886** | 0.2144 | 0.2160 |
-| Remates al arco | **0.1999** | 0.2116 | 0.2089 |
-| Córners | **0.2064** | 0.2173 | 0.2158 |
-| Faltas | **0.2063** | 0.2189 | 0.2219 |
-| Tarjetas | **0.2017** | 0.2092 | 0.2074 |
-| Entradas | **0.1701** | 0.1930 | 0.1903 |
-| Goles | **0.1665** | 0.1688 | 0.1664 |
+| Mercado | Modelo | Media de liga | Mejora | Le gana al promedio del propio equipo |
+|---|---|---|---|---|
+| Remates | **0.1871** | 0.2173 | +13.9% | 7/7 ligas |
+| Remates al arco | **0.1984** | 0.2160 | +8.1% | 7/7 |
+| Faltas | **0.2012** | 0.2156 | +6.7% | 7/7 |
+| Entradas | **0.1885** | 0.1999 | +5.7% | 7/7 |
+| Córners | **0.2111** | 0.2235 | +5.6% | 7/7 |
+| Goles | **0.1773** | 0.1858 | +4.6% | 7/7 |
+| Tarjetas | **0.1891** | 0.1928 | +1.9% | 7/7 |
 
-El modelo le gana al promedio del propio equipo en todos los mercados. Los goles son la
-excepción práctica: la mejora es marginal porque los goles son casi ruido irreducible.
+Las 49 combinaciones liga-mercado dan mejora positiva. Remates es el más predecible y se mantiene
+entre +12% y +19% en las siete ligas. Las tarjetas son el más flojo (+1% a +3%): dependen mucho
+del árbitro, que todavía no entra en el modelo aunque ya se guarda en `history/`.
 
-La calibración de remates cae dentro de ±0.03 en los diez bins. Las tarjetas quedan peor
-(±0.05): el árbitro pesa mucho y todavía no entra en el modelo, aunque ya se guarda en
-`history/`.
+La calibración de remates cae dentro de ±0.03 en los diez bins.
+
+### Qué mueve los remates
+
+Selección hacia adelante con R² fuera de muestra:
+
+| Feature | Gana en R² | Efecto (+1 desvío) |
+|---|---|---|
+| Localía | +0.097 | **+1.55 remates** |
+| Remates que concede el rival | +0.047 | +0.70 |
+| Remates propios (últimos 10) | +0.034 | +0.90 |
+
+La localía vale **+3.12 remates** (14.29 de local contra 11.17 de visitante, +24.5%), consistente
+en todas las ligas. Es el predictor más fuerte del mercado.
+
+Lo que concede el rival aporta más que el historial propio: sin las columnas `_ag` el modelo
+tendría media ecuación, y es la mitad más informativa.
+
+xG, toques en el área, remates dentro del área, córners y las zonas **no aportan nada
+incremental** al volumen de remates: son aguas abajo del propio volumen. Sirven para mercados de
+calidad (goles, xG), no de cantidad. El techo de R² es 0.184, o sea que el 82% de la varianza de
+remates es ruido irreducible del partido.
+
+Sobre xT: no es calculable con esta fuente (ver `scripts/tilt_experiment.py`).
 
 **Advertencia honesta**: estas probabilidades son del modelo, no del mercado. Ganarle de forma
 consistente a una línea de cierre en props de jugador es muy difícil. La utilidad realista es

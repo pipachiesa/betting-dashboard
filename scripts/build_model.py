@@ -58,13 +58,15 @@ PLAYER_MARKETS = {
     "cards": ("yellow", "yellow"),
 }
 
-# Tuned by walk-forward sweep (scripts/backtest.py) on Liga Profesional.  The
-# spread is meaningful: shots are a stable team signal and tolerate little
-# shrinkage, while goals are close to noise and have to be pulled hard towards
-# the league mean.  Re-run the sweep once more leagues are backfilled.
-SHRINK_K = {"shots": 4.0, "sot": 14.0, "corners": 14.0, "goals": 28.0,
-            "fouls": 10.0, "cards": 20.0, "tackles": 4.0, "xg": 10.0,
-            "saves": 14.0}
+# Tuned by walk-forward sweep over four leagues and ~64k scored predictions.
+# The earlier single-league tuning was overfit: on Liga Profesional alone goals
+# wanted k=28, but with the full archive the optimum drops to 7.  Where the
+# Brier-optimal k left calibration above 3 points, the next k that fixes
+# calibration was taken instead -- a well-calibrated 70% matters more than a
+# 0.0004 Brier gain.
+SHRINK_K = {"shots": 7.0, "sot": 10.0, "corners": 20.0, "goals": 7.0,
+            "fouls": 10.0, "cards": 10.0, "tackles": 10.0, "xg": 10.0,
+            "saves": 10.0}
 DEFAULT_K = 7.0
 PLAYER_K = 4.0          # pseudo-matches of shrinkage on a player's share
 HALF_LIFE = 12.0        # recency half-life, in matches
@@ -205,12 +207,20 @@ def player_shares(players: pd.DataFrame, teams: pd.DataFrame) -> dict:
     return {"shares": out, "priors": priors}
 
 
+ACTIVE_DAYS = 150       # a player who has not appeared since then is not bettable
+
+
 def player_profiles(players: pd.DataFrame) -> dict:
     latest = players["date"].max()
     players = players.copy()
     players["w"] = recency_weights(players["date"], latest)
+    # the browser only ever needs players who might actually start on Saturday;
+    # keeping five seasons of departed players triples the payload
+    cutoff = latest - pd.Timedelta(days=ACTIVE_DAYS)
     profiles = {}
     for player_id, group in players.groupby("player_id"):
+        if group["date"].max() < cutoff:
+            continue
         recent = group.sort_values("date").tail(10)
         weight = recent["w"].to_numpy()
         minutes = float(np.average(recent["minutes"], weights=weight)) if len(recent) else 0.0
@@ -260,9 +270,11 @@ def main() -> int:
               f"{len(markets)} mercados, {frame['team_id'].nunique()} equipos")
 
     shares = player_shares(players, teams)
+    profiles = player_profiles(players)
     model["players"] = {
-        "profiles": player_profiles(players),
-        "shares": shares.get("shares", {}),
+        "profiles": profiles,
+        # shares for departed players are dead weight in the payload
+        "shares": {k: v for k, v in shares.get("shares", {}).items() if k in profiles},
         "priors": shares.get("priors", {}),
     }
     model["generatedAt"] = pd.Timestamp.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
