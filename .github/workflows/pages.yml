@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - index.html
+      - props.html
       - data.json
+      - model.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
