@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matriz de props · Betting Dashboard</title>
+<style>
+:root{
+  --bg:#141618; --shell:#1e2123; --panel:#25282b; --side:#1a1d1f; --raise:#2c3033;
+  --border:#33383c; --border-soft:#2a2e32;
+  --text:#e9ecef; --muted:#8f959c; --dim:#6b7178;
+  --blue:#2f7cf6; --blue-soft:#1d4ed8;
+  --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+  --radius:16px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.45 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.shell{display:grid;grid-template-columns:236px 1fr;gap:0;min-height:100vh;
+  background:var(--shell);margin:18px;border-radius:20px;overflow:hidden;
+  border:1px solid var(--border-soft);box-shadow:0 24px 60px rgba(0,0,0,.45)}
+
+/* ---------- sidebar ---------- */
+.side{background:var(--side);border-right:1px solid var(--border-soft);
+  padding:20px 14px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px 2px}
+.brand .mark{width:32px;height:32px;border-radius:9px;background:var(--blue);
+  display:grid;place-items:center;font-size:15px}
+.brand b{font-size:15.5px;letter-spacing:-.02em}
+.side-scroll{overflow-y:auto;flex:1;margin:0 -4px;padding:0 4px}
+.side-scroll::-webkit-scrollbar{width:6px}
+.side-scroll::-webkit-scrollbar-thumb{background:#3a3f44;border-radius:3px}
+.grp{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;padding:14px 8px 6px}
+.lg{width:100%;display:flex;align-items:center;gap:9px;padding:8px;border:0;
+  background:none;color:var(--muted);font:inherit;font-weight:600;cursor:pointer;
+  border-radius:9px;text-align:left}
+.lg:hover{background:var(--raise);color:var(--text)}
+.lg .caret{margin-left:auto;font-size:10px;color:var(--dim);transition:transform .16s}
+.lg.open .caret{transform:rotate(90deg)}
+.lg .flag{width:20px;height:20px;border-radius:5px;background:var(--raise);
+  display:grid;place-items:center;font-size:10px;font-weight:700;color:var(--muted)}
+.teams{display:none;padding:2px 0 6px 12px;margin-left:16px;
+  border-left:1px solid var(--border-soft)}
+.teams.open{display:block}
+.tm{width:100%;display:block;padding:7px 10px;border:0;background:none;
+  color:var(--muted);font:inherit;font-size:13.5px;cursor:pointer;border-radius:8px;
+  text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm:hover{background:var(--raise);color:var(--text)}
+.tm.sel{background:var(--blue);color:#fff;font-weight:600}
+.user{display:flex;align-items:center;gap:10px;padding:12px 8px 0;
+  border-top:1px solid var(--border-soft)}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--raise);
+  display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--muted)}
+.user small{display:block;color:var(--dim);font-size:11.5px}
+
+/* ---------- main ---------- */
+.main{padding:22px 24px 28px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+h1{margin:0;font-size:26px;letter-spacing:-.035em;font-weight:650}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  font-size:13px;color:var(--muted)}
+.chip b{color:var(--text);font-weight:600}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.spacer{margin-left:auto}
+select.ctl{background:var(--panel);border:1px solid var(--border);color:var(--text);
+  border-radius:10px;padding:8px 11px;font:inherit;font-size:13px;cursor:pointer;outline:0}
+select.ctl:focus{border-color:var(--blue)}
+
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:16px;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);
+  padding:18px}
+.phead{display:flex;align-items:center;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+.phead h2{margin:0;font-size:16.5px;letter-spacing:-.02em;font-weight:650}
+.sub{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px}
+.tab{padding:7px 12px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);border-radius:9px;font:inherit;font-size:13px;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px}
+.tab:hover{background:var(--raise);color:var(--text)}
+.tab.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.tab .pip{width:6px;height:6px;border-radius:50%}
+
+.twrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:520px}
+th,td{padding:0;text-align:center}
+thead th{color:var(--dim);font-size:11px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;padding:0 0 10px;white-space:nowrap}
+thead th:first-child{text-align:left;padding-left:2px}
+tbody td{padding:3px 3px 3px 0}
+.pname{text-align:left;white-space:nowrap;padding-right:14px!important;max-width:190px;
+  overflow:hidden;text-overflow:ellipsis}
+.pname b{font-weight:550;font-size:13.5px}
+.pname i{font-style:normal;color:var(--dim);font-size:11.5px;margin-left:7px}
+.cell{display:block;border-radius:8px;padding:9px 4px;font-size:13px;
+  font-variant-numeric:tabular-nums;font-weight:600;transition:transform .1s;cursor:default}
+.cell:hover{transform:scale(1.06)}
+.lam{color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums;
+  text-align:right;padding-right:12px!important;white-space:nowrap}
+.empty{color:var(--dim);text-align:center;padding:40px 10px;font-size:13.5px}
+
+.legend{display:flex;align-items:center;gap:10px;margin-top:16px;
+  padding-top:14px;border-top:1px solid var(--border-soft);flex-wrap:wrap}
+.legend span{color:var(--dim);font-size:11.5px}
+.ramp{display:flex;height:9px;border-radius:5px;overflow:hidden;flex:1;min-width:150px;max-width:280px}
+.ramp i{flex:1}
+
+.card{background:var(--panel);border:1px solid var(--border-soft);
+  border-radius:var(--radius);padding:17px;margin-bottom:14px}
+.card h3{margin:0 0 3px;font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+.card p{margin:0;color:var(--muted);font-size:12.5px;line-height:1.5}
+.verdict{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:8px;
+  font-size:12px;font-weight:650;margin:12px 0 10px}
+.v-good{background:rgba(34,197,94,.13);color:#4ade80}
+.v-mid{background:rgba(245,158,11,.13);color:#fbbf24}
+.v-bad{background:rgba(239,68,68,.12);color:#f87171}
+.rows{margin-top:12px;border-top:1px solid var(--border-soft)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;
+  border-bottom:1px solid var(--border-soft);font-size:12.5px}
+.row:last-child{border-bottom:0}
+.row span{color:var(--muted)}
+.row b{font-weight:600;font-variant-numeric:tabular-nums}
+.mini{display:flex;gap:2px;margin-top:10px;height:26px;align-items:flex-end}
+.mini i{flex:1;background:var(--blue);border-radius:2px;opacity:.85}
+.note{color:var(--dim);font-size:11.5px;line-height:1.55;margin-top:11px}
+@media(max-width:1080px){.cols{grid-template-columns:1fr}.shell{grid-template-columns:1fr}
+  .side{border-right:0;border-bottom:1px solid var(--border-soft)}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="mark">◆</span><b>Betting Dashboard</b></div>
+    <div class="side-scroll">
+      <div class="grp">Vistas</div>
+      <a class="lg" href="index.html" style="text-decoration:none">
+        <span class="flag">▤</span><span>Tendencias</span></a>
+      <button class="lg" style="background:var(--raise);color:var(--text)">
+        <span class="flag" style="background:var(--blue);color:#fff">▦</span><span>Matriz de props</span></button>
+      <div class="grp">Ligas</div>
+      <nav id="nav"></nav>
+    </div>
+    <div class="user">
+      <span class="avatar">FC</span>
+      <div><b style="font-size:13px">Felipe Chiesa</b><small id="modelinfo">cargando…</small></div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <h1>Matriz de props</h1>
+      <span class="chip" id="fixchip"><span class="dot"></span><b>—</b></span>
+      <span class="spacer"></span>
+      <select class="ctl" id="rival"></select>
+      <select class="ctl" id="venue">
+        <option value="1">De local</option>
+        <option value="0">De visitante</option>
+      </select>
+    </div>
+
+    <div class="cols">
+      <section class="panel">
+        <div class="phead"><h2 id="teamname">—</h2></div>
+        <p class="sub" id="teamsub">Probabilidad de superar cada línea, calculada por el modelo.</p>
+        <div class="tabs" id="tabs"></div>
+        <div class="twrap"><table id="grid"></table></div>
+        <div class="legend">
+          <span>Menos probable</span>
+          <div class="ramp" id="ramp"></div>
+          <span>Más probable</span>
+          <span style="margin-left:auto">λ = valor esperado</span>
+        </div>
+      </section>
+
+      <div>
+        <div class="card" id="quality"></div>
+        <div class="card" id="ctx"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+
+/* Backtest verdicts travel with the UI on purpose: the whole point of measuring
+   which markets beat a player's own trailing average is to stop betting the
+   ones that do not. */
+const MARKETS={
+  saves :{name:'Atajadas',       lines:[0.5,1.5,2.5,3.5,4.5,5.5], base:'sot',   side:'opp', gk:1,
+          edge:'+6,8%', leagues:'7/7', verdict:'good',
+          why:'Dependen de los remates al arco que genera el rival, información que el historial del propio arquero no puede contener.'},
+  sot   :{name:'Remates al arco',lines:[0.5,1.5,2.5],             base:'sot',   side:'own', gk:0,
+          edge:'+2,5%', leagues:'7/7', verdict:'mid',
+          why:'Ventaja chica pero no cambia de signo en ninguna liga. Es real.'},
+  fouls :{name:'Faltas cometidas',lines:[0.5,1.5,2.5],            base:'fouls', side:'own', gk:0,
+          edge:'+2,4%', leagues:'7/7', verdict:'mid',
+          why:'Ventaja chica y consistente en las siete ligas.'},
+  shots :{name:'Remates',        lines:[0.5,1.5,2.5,3.5],         base:'shots', side:'own', gk:0,
+          edge:'+0,1%', leagues:'4/7', verdict:'bad',
+          why:'Cambia de signo según la liga. Mirar las últimas 10 barras del jugador rinde igual. Apostá el total del equipo, no el del jugador.'},
+  fouled:{name:'Faltas recibidas',lines:[0.5,1.5,2.5,3.5],        base:'fouls', side:'opp', gk:0,
+          edge:'+0,2%', leagues:'6/7', verdict:'bad',
+          why:'Indistinguible del promedio propio del jugador.'}
+};
+const LEAGUE_NAMES={arg:'Argentina',bra:'Brasil',eng:'Inglaterra',esp:'España',
+                    fra:'Francia',ita:'Italia',usa:'Estados Unidos'};
+const VERDICT={good:['v-good','Ventaja clara'],mid:['v-mid','Ventaja chica pero real'],
+               bad:['v-bad','Sin ventaja · ruido']};
+
+let data=null,model=null,team=null,market='saves';
+
+/* light -> intense blue, matching the reference palette */
+function heat(p){
+  const stops=[[238,244,254],[207,225,250],[159,195,246],[95,155,241],[42,111,224],[11,71,176]];
+  const t=Math.max(0,Math.min(1,p))*(stops.length-1),i=Math.min(stops.length-2,Math.floor(t)),f=t-i;
+  const c=stops[i].map((v,k)=>Math.round(v+(stops[i+1][k]-v)*f));
+  return {bg:`rgb(${c.join(',')})`, fg: p>0.52?'#fff':'#12233d'};
+}
+function nbTail(lam,line){          // Poisson: player counts are small
+  lam=Math.max(1e-9,lam);const t=Math.floor(line);let s=0,term=Math.exp(-lam);
+  for(let k=0;k<=t;k++){if(k)term*=lam/k;s+=term}
+  return Math.min(1,Math.max(0,1-s));
+}
+function teamLambda(league,mk,tid,oid,isHome){
+  const m=model?.leagues?.[league]?.markets?.[mk];if(!m)return null;
+  const a=m.teams[tid],d=m.teams[oid];if(!a||!d)return null;
+  return m.mu*a[0]*d[1]*(isHome?m.home:1/m.home);
+}
+
+function buildNav(){
+  const nav=$('nav');nav.textContent='';
+  const byLeague={};
+  data.teams.forEach(t=>{(byLeague[t.l]=byLeague[t.l]||[]).push(t)});
+  Object.keys(byLeague).sort((a,b)=>(LEAGUE_NAMES[a]||a).localeCompare(LEAGUE_NAMES[b]||b,'es'))
+  .forEach(lg=>{
+    const btn=document.createElement('button');btn.className='lg';
+    btn.innerHTML=`<span class="flag">${lg.toUpperCase().slice(0,2)}</span>`+
+      `<span>${LEAGUE_NAMES[lg]||lg}</span><span class="caret">▶</span>`;
+    const box=document.createElement('div');box.className='teams';
+    byLeague[lg].sort((a,b)=>a.n.localeCompare(b.n,'es')).forEach(t=>{
+      const b=document.createElement('button');b.className='tm';b.textContent=t.n;
+      b.dataset.id=t.i;
+      b.onclick=()=>{team=t;document.querySelectorAll('.tm').forEach(x=>x.classList.remove('sel'));
+        b.classList.add('sel');fillRivals();render()};
+      box.append(b);
+    });
+    btn.onclick=()=>{btn.classList.toggle('open');box.classList.toggle('open')};
+    nav.append(btn,box);
+  });
+}
+
+function selectInNav(id){
+  const btn=document.querySelector(`.tm[data-id="${id}"]`);
+  if(!btn)return;
+  btn.classList.add('sel');
+  btn.parentElement.classList.add('open');
+  btn.parentElement.previousElementSibling.classList.add('open');
+  btn.scrollIntoView({block:'nearest'});
+}
+
+function fillRivals(){
+  const sel=$('rival');sel.textContent='';
+  const mates=data.teams.filter(t=>t.l===team.l&&t.i!==team.i)
+    .sort((a,b)=>a.n.localeCompare(b.n,'es'));
+  // default to the real next fixture when there is one
+  const fx=(data.fixtures||[]).filter(f=>f.home===team.i||f.away===team.i)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''))[0];
+  mates.forEach(t=>{const o=document.createElement('option');o.value=t.i;
+    o.textContent='vs '+t.n;sel.append(o)});
+  if(fx){
+    const rivalId=fx.home===team.i?fx.away:fx.home;
+    if(mates.some(t=>t.i===rivalId)){sel.value=rivalId;$('venue').value=fx.home===team.i?'1':'0'}
+    const d=fx.date?new Date(fx.date):null;
+    $('fixchip').innerHTML='<span class="dot"></span><b>Próximo</b> · '+
+      (d?d.toLocaleDateString('es-AR',{day:'numeric',month:'short'}):'—');
+  } else $('fixchip').innerHTML='<span class="dot" style="background:#6b7178"></span>Sin partido programado';
+}
+
+function buildTabs(){
+  const box=$('tabs');box.textContent='';
+  Object.entries(MARKETS).forEach(([k,m])=>{
+    const b=document.createElement('button');
+    b.className='tab'+(k===market?' on':'');
+    const col=m.verdict==='good'?'#4ade80':m.verdict==='mid'?'#fbbf24':'#f87171';
+    b.innerHTML=`<span class="pip" style="background:${col}"></span>${m.name}`;
+    b.onclick=()=>{market=k;buildTabs();render()};
+    box.append(b);
+  });
+}
+
+function render(){
+  buildTabs();
+  const ramp=$('ramp');ramp.textContent='';
+  for(let i=0;i<=10;i++){const s=document.createElement('i');
+    s.style.background=heat(i/10).bg;ramp.append(s)}
+  if(!team||!model){$('grid').innerHTML='<tbody><tr><td class="empty">Elegí un equipo en la barra lateral.</td></tr></tbody>';return}
+
+  const M=MARKETS[market],oid=Number($('rival').value),isHome=$('venue').value==='1';
+  const rival=data.teams.find(t=>t.i===oid);
+  $('teamname').textContent=team.n;
+  $('teamsub').textContent=`${M.name} · ${isHome?'de local':'de visitante'} vs ${rival?rival.n:'—'} · probabilidad de superar cada línea`;
+
+  const lamTeam=M.side==='own'?teamLambda(team.l,M.base,team.i,oid,isHome)
+                              :teamLambda(team.l,M.base,oid,team.i,!isHome);
+  const grid=$('grid');grid.textContent='';
+  if(lamTeam===null){
+    grid.innerHTML='<tbody><tr><td class="empty">Este cruce no está en el modelo: alguno de los dos equipos no tiene histórico de liga.</td></tr></tbody>';
+    renderCards(null);return;
+  }
+
+  const profiles=model.players.profiles,shares=model.players.shares;
+  const rows=Object.keys(profiles).filter(id=>{
+    const p=profiles[id];
+    return p.team===team.i && p.min>=20 && p.n>=3 && (M.gk?p.gk===1:p.gk===0)
+      && shares[id] && shares[id][market]>0;
+  }).map(id=>{
+    const p=profiles[id];
+    return {id,name:p.name,pos:p.pos,min:p.min,n:p.n,
+            lam:lamTeam*shares[id][market]*(p.min/90)};
+  }).filter(r=>r.lam>=0.08).sort((a,b)=>b.lam-a.lam);
+
+  if(!rows.length){
+    grid.innerHTML='<tbody><tr><td class="empty">Sin jugadores con muestra suficiente para este mercado.</td></tr></tbody>';
+    renderCards(lamTeam);return;
+  }
+
+  const thead=document.createElement('thead'),tr=document.createElement('tr');
+  tr.innerHTML='<th>Jugador</th><th style="text-align:right;padding-right:12px">λ</th>'+
+    M.lines.map(l=>`<th>O ${String(l).replace('.',',')}</th>`).join('');
+  thead.append(tr);
+  const tbody=document.createElement('tbody');
+  rows.forEach(r=>{
+    const row=document.createElement('tr');
+    const nm=document.createElement('td');nm.className='pname';
+    nm.innerHTML=`<b>${r.name}</b><i>${r.pos||''} · ${Math.round(r.min)}'</i>`;
+    row.append(nm);
+    const lm=document.createElement('td');lm.className='lam';lm.textContent=r.lam.toFixed(2);
+    row.append(lm);
+    M.lines.forEach(line=>{
+      const p=nbTail(r.lam,line),c=heat(p),td=document.createElement('td');
+      const s=document.createElement('span');s.className='cell';
+      s.style.background=c.bg;s.style.color=c.fg;s.textContent=Math.round(p*100)+'%';
+      s.title=`${r.name} · Over ${line} ${M.name.toLowerCase()}: ${(p*100).toFixed(1)}% (λ ${r.lam.toFixed(2)}, ${r.n} pj)`;
+      td.append(s);row.append(td);
+    });
+    tbody.append(row);
+  });
+  grid.append(thead,tbody);
+  renderCards(lamTeam);
+}
+
+function renderCards(lamTeam){
+  const M=MARKETS[market],[cls,label]=VERDICT[M.verdict];
+  $('quality').innerHTML=
+    `<h3>Calidad del mercado</h3>`+
+    `<p>Medido contra el promedio de los últimos 10 partidos del propio jugador.</p>`+
+    `<span class="verdict ${cls}">${label}</span>`+
+    `<div class="rows">`+
+      `<div class="row"><span>Mejora en Brier</span><b>${M.edge}</b></div>`+
+      `<div class="row"><span>Ligas con mejora</span><b>${M.leagues}</b></div>`+
+    `</div><p class="note">${M.why}</p>`;
+
+  const meta=model?.leagues?.[team?.l];
+  $('ctx').innerHTML=
+    `<h3>Contexto del modelo</h3>`+
+    `<p>${LEAGUE_NAMES[team?.l]||''}</p>`+
+    `<div class="rows">`+
+      (lamTeam!==null&&lamTeam!==undefined?`<div class="row"><span>λ del equipo (${MARKETS[market].base})</span><b>${lamTeam.toFixed(2)}</b></div>`:'')+
+      `<div class="row"><span>Partidos de ajuste</span><b>${meta?meta.matches:'—'}</b></div>`+
+      `<div class="row"><span>Desde</span><b>${meta?meta.from:'—'}</b></div>`+
+      `<div class="row"><span>Hasta</span><b>${meta?meta.to:'—'}</b></div>`+
+    `</div>`+
+    `<p class="note">Las probabilidades son del modelo, no del mercado. Nunca se validaron contra una cuota de cierre real en estos mercados.</p>`;
+}
+
+$('rival').onchange=render;$('venue').onchange=render;
+
+const RAW='https://raw.githubusercontent.com/pipachiesa/betting-dashboard/main/';
+Promise.all([
+  fetch(RAW+'data.json?v='+Date.now()).then(r=>r.json()),
+  fetch(RAW+'model.json?v='+Date.now()).then(r=>r.json())
+]).then(([d,m])=>{
+  data=d;model=m;
+  const total=Object.values(m.leagues).reduce((a,l)=>a+l.matches,0);
+  $('modelinfo').textContent=total.toLocaleString('es-AR')+' partidos ajustados';
+  buildNav();
+  const first=data.teams.find(t=>model.leagues[t.l]);
+  if(first){team=first;fillRivals();selectInNav(first.i)}
+  render();
+}).catch(e=>{
+  $('grid').innerHTML='<tbody><tr><td class="empty">No se pudieron cargar los datos: '+e.message+'</td></tr></tbody>';
+});
+})();
+</script>
+</body>
+</html>
