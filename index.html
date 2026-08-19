@@ -142,6 +142,20 @@
     if(!meta){summary.innerHTML='<strong>Sin modelo para esta liga.</strong> Hace falta historial: corré <code>backfill.py</code>.';return}
     summary.innerHTML='<strong>'+home.n+' vs '+away.n+'</strong> · modelo ajustado sobre '+meta.matches+' partidos ('+meta.from+' → '+meta.to+') · las probabilidades son del modelo, no del mercado';
 
+    // the fixture list includes cup ties against clubs from other divisions;
+    // the league model has no factors for them, so say so instead of drawing
+    // an empty table
+    const known=m=>{const mk=meta.markets?.shots?.teams;return mk&&mk[m]};
+    const missing=[home,away].filter(t=>!known(t.i));
+    if(missing.length){
+      predict.innerHTML='<p class="pred-note">Sin estimación para este partido: '+
+        missing.map(t=>'<strong>'+t.n+'</strong>').join(' y ')+
+        (missing.length>1?' no están':' no está')+
+        ' en el modelo. Es un cruce de copa contra un equipo de otra división, y el histórico '+
+        'solo cubre partidos de liga. Elegí un partido de liga.</p>';
+      return;
+    }
+
     // team markets, both sides
     const teamRows=[];
     Object.keys(predLines).forEach(market=>{
