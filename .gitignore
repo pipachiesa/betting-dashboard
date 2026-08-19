@@ -1,0 +1,3 @@
+history/raw/
+*.tmp
+__pycache__/

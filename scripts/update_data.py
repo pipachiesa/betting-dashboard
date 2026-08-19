@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import csv
 import datetime as dt
 import json
 import os
@@ -11,6 +12,9 @@ import pathlib
 import time
 import urllib.parse
 import urllib.request
+
+from fotmob import Fotmob
+from parse import parse_match, player_columns, team_columns
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data.json"
@@ -20,7 +24,7 @@ STORED_MATCH_LIMIT = 60
 WORKERS = int(os.getenv("FETCH_WORKERS", "4"))
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; betting-dashboard/1.0)"}
 # Trigger a snapshot refresh whenever the collector configuration changes.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 LEAGUES = (
     {"key": "arg", "name": "Liga Profesional", "country": "Argentina", "id": 112, "ccode": "ARG", "season": "2026", "groups": ("Zona A", "Zona B"), "start": "2026-01-01", "per_run": 12},
     # Controlled backfills keep already-started leagues from causing a large burst.
@@ -84,19 +88,11 @@ COMPETITIONS = {
 }
 
 
-def fetch_json(path: str, params: dict[str, object], attempts: int = 4) -> dict:
-    url = f"{BASE}/{path}?{urllib.parse.urlencode(params)}"
-    error: Exception | None = None
-    for attempt in range(attempts):
-        try:
-            request = urllib.request.Request(url, headers=HEADERS)
-            with urllib.request.urlopen(request, timeout=35) as response:
-                return json.load(response)
-        except Exception as exc:  # network and transient HTTP failures
-            error = exc
-            if attempt + 1 < attempts:
-                time.sleep(1.5 * (attempt + 1))
-    raise RuntimeError(f"Failed after {attempts} attempts: {url}") from error
+CLIENT = Fotmob(min_interval=float(os.getenv("FETCH_INTERVAL", "0.35")))
+
+
+def fetch_json(path: str, params: dict[str, object]) -> dict:
+    return CLIENT.get(path, **params)
 
 
 def current_teams(league_config: dict) -> list[dict]:
@@ -161,6 +157,18 @@ def team_matches(team: dict) -> dict:
     return team
 
 
+def number(value):
+    """xG arrives as a string like '1.23'; possession as an int; both can be null."""
+    if value is None:
+        return None
+    try:
+        result = round(float(value), 2)
+    except (TypeError, ValueError):
+        return None
+    # keep whole numbers as ints so possession does not serialise as "53.0"
+    return int(result) if result == int(result) else result
+
+
 def nested_player_stat(player: dict, key: str, default=None):
     for group in player.get("stats", []):
         for item in group.get("stats", {}).values():
@@ -192,7 +200,7 @@ def team_stat(payload: dict, key: str) -> list:
 
 
 def match_detail(match_id: int) -> dict:
-    payload = fetch_json("matchDetails", {"matchId": match_id})
+    payload = CLIENT.match_details(match_id)
     general = payload.get("general", {})
     header_teams = payload.get("header", {}).get("teams", [{}, {}])
     card_events: dict[int, int] = {}
@@ -205,6 +213,10 @@ def match_detail(match_id: int) -> dict:
             )
     fouls = team_stat(payload, "fouls")
     tackles = team_stat(payload, "matchstats.headers.tackles")
+    expected = team_stat(payload, "expected_goals")
+    expected_on_target = team_stat(payload, "expected_goals_on_target")
+    possession = team_stat(payload, "BallPossesion")
+    big_chances = team_stat(payload, "big_chance")
     fouls_covered = any(value is not None for value in fouls)
     tackles_covered = any(value is not None for value in tackles)
     players = []
@@ -239,6 +251,10 @@ def match_detail(match_id: int) -> dict:
         "redCards": team_stat(payload, "red_cards"),
         "fouls": fouls,
         "tackles": tackles,
+        "xg": expected,
+        "xgot": expected_on_target,
+        "possession": possession,
+        "bigChances": big_chances,
         "players": players,
     }
 
@@ -327,6 +343,16 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
                         detail["fouls"][side],
                         detail["fouls"][other_side],
                         detail["tackles"][side],
+                        detail["shots"][other_side],
+                        detail["shotsOnTarget"][other_side],
+                        detail["corners"][other_side],
+                        number(detail["xg"][side]),
+                        number(detail["xg"][other_side]),
+                        number(detail["xgot"][side]),
+                        number(detail["xgot"][other_side]),
+                        number(detail["possession"][side]),
+                        detail["bigChances"][side],
+                        detail["bigChances"][other_side],
                     ],
                     "p": rows,
                 }
@@ -348,6 +374,66 @@ def pack(teams: list[dict], details: dict[int, dict], previous: dict) -> list[di
     return packed
 
 
+HISTORY = ROOT / "history"
+
+
+def append_history(teams: list[dict], match_ids: list[int]) -> int:
+    """Add freshly fetched matches to the append-only training archive.
+
+    data.json is a rolling 60-match window built for the dashboard; it is not a
+    training set.  Every match that passes through here is also written to
+    history/, keyed by match and team, so the archive only ever grows.
+    """
+    if not match_ids:
+        return 0
+    wanted = set(match_ids)
+    season_by_league = {config["key"]: config["season"] for config in LEAGUES}
+    context: dict[int, tuple[str, str, str]] = {}
+    for team in teams:
+        league = team["league"]
+        for match_id, competition in team.get("competition_by_match", {}).items():
+            if match_id in wanted:
+                context[match_id] = (league, season_by_league[league], competition[1])
+
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for match_id, (league, season, _) in context.items():
+        grouped.setdefault((league, season), []).append(match_id)
+
+    written = 0
+    for (league, season), ids in grouped.items():
+        for kind, columns, index in (
+            ("teams", team_columns(), ("match_id", "team_id")),
+            ("players", player_columns(), ("match_id", "player_id")),
+        ):
+            path = HISTORY / kind / f"{league}_{season.replace('/', '-')}.csv"
+            rows: dict[tuple, dict] = {}
+            if path.exists():
+                with path.open(encoding="utf-8") as handle:
+                    for row in csv.DictReader(handle):
+                        rows[tuple(row[k] for k in index)] = row
+            for match_id in ids:
+                try:
+                    payload = CLIENT.match_details(match_id)
+                except Exception as exc:
+                    print(f"warning: history {match_id}: {exc}")
+                    continue
+                team_rows, player_rows = parse_match(
+                    payload, league, season, context[match_id][2]
+                )
+                for row in (team_rows if kind == "teams" else player_rows):
+                    rows[tuple(str(row[k]) for k in index)] = row
+                    written += 1
+            path.parent.mkdir(parents=True, exist_ok=True)
+            ordered = sorted(rows.values(), key=lambda r: (str(r["date"]), str(r["match_id"])))
+            temporary = path.with_suffix(".tmp")
+            with temporary.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(ordered)
+            temporary.replace(path)
+    return written
+
+
 def main() -> None:
     previous = json.loads(OUTPUT.read_text(encoding="utf-8")) if OUTPUT.exists() else {"teams": []}
     with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -367,7 +453,7 @@ def main() -> None:
             candidates.update(
                 match_id for match_id, match in old_matches.items()
                 if match_id in team["matches"]
-                and (len(match.get("x", [])) < 10 or any(len(row) < 8 for row in match.get("p", [])))
+                and (len(match.get("x", [])) < 20 or any(len(row) < 8 for row in match.get("p", [])))
             )
         allowed_ids.update(sorted(candidates, reverse=True)[:config["per_run"]])
     new_ids = sorted(allowed_ids)
@@ -384,6 +470,9 @@ def main() -> None:
                 print(f"warning: match {match_id}: {exc}")
     if new_ids and len(details) < int(len(new_ids) * 0.5):
         raise RuntimeError(f"Coverage too low for new matches: {len(details)}/{len(new_ids)}")
+    archived = append_history(teams, list(details))
+    if archived:
+        print(f"archivo historico: {archived} filas agregadas/actualizadas")
     packed_teams = pack(teams, details, previous)
     if packed_teams == previous.get("teams", []) and sorted(failures) == sorted(previous.get("failedMatchIds", [])):
         print(f"no changes; checked {len(teams)} teams and fetched 0 match details")

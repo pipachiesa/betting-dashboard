@@ -3,7 +3,7 @@ name: Update betting data
 on:
   push:
     paths:
-      - 'scripts/update_data.py'
+      - 'scripts/**'
   schedule:
     - cron: "17 9 * * *"
   workflow_dispatch:
@@ -23,16 +23,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Refresh snapshot
+      - name: Refresh snapshot and archive
         run: python scripts/update_data.py
+      - name: Rebuild model
+        run: python scripts/build_model.py
       - name: Commit changes
         run: |
-          if git diff --quiet -- data.json; then
+          if git diff --quiet -- data.json history model.json; then
             echo "No data changes"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.json
+          git add data.json model.json history
           git commit -m "Update betting data"
           git push
