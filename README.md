@@ -119,6 +119,46 @@ remates es ruido irreducible del partido.
 
 Sobre xT: no es calculable con esta fuente (ver `scripts/tilt_experiment.py`).
 
+### Contra el mercado (el único test que importa)
+
+`scripts/validate_odds.py` cruza el histórico con las cuotas de cierre de football-data.co.uk
+(6.526 partidos de las 4 ligas europeas) y compara el modelo contra el precio sin margen.
+
+| | Brier | Log-loss |
+|---|---|---|
+| Modelo | 0.24704 | 0.68750 |
+| **Mercado (sin margen)** | **0.23956** | **0.67193** |
+| Promedio de los dos | 0.24168 | 0.67627 |
+
+**El modelo pierde por 3,1%.** Y promediarlo con el mercado tampoco mejora al mercado solo, lo
+que significa que no aporta información que el precio no tenga ya.
+
+Apostando cuando el modelo discrepa, a cuota real:
+
+| Umbral | Apuestas | Aciertos | ROI |
+|---|---|---|---|
+| 3% | 4.478 | 46,1% | **−7,9%** |
+| 5% | 3.325 | 46,1% | −6,4% |
+| 8% | 1.896 | 44,4% | −7,2% |
+| 12% | 792 | 44,6% | −1,7% |
+
+Negativo en todos los umbrales. No hay edge en este mercado.
+
+**Pero ojo con generalizar**: esto mide goles Over/Under 2.5, que es justo el mercado **más
+flojo** del modelo (+4,6% sobre el baseline). Donde es fuerte — remates +13,9%, remates al arco
++8,1% — no existen cuotas de cierre gratis en ningún lado. O sea: es evidencia de que no hay
+edge, no prueba.
+
+Sesgo detectable y corregible: el modelo sobreestima los partidos de pocos goles (cuando predice
+36% de Over, ocurre 45%). Probablemente por asumir independencia entre los goles de local y
+visitante, que en la realidad están correlacionados.
+
+### Validación cruzada de los datos
+
+Los remates y córners de FotMob se contrastaron contra football-data.co.uk, que usa otro
+proveedor: **7.378 partidos emparejados (99,9%), correlación 0.995 y diferencia ≤1 en el 99%**.
+Los datos son confiables.
+
 **Advertencia honesta**: estas probabilidades son del modelo, no del mercado. Ganarle de forma
 consistente a una línea de cierre en props de jugador es muy difícil. La utilidad realista es
 detectar desacuerdos, no asumir que el modelo tiene razón.
