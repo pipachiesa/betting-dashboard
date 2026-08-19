@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install dependencies
+        # the collector is stdlib only, but build_model.py needs the numeric stack
+        run: pip install --quiet numpy pandas
       - name: Refresh snapshot and archive
         run: python scripts/update_data.py
       - name: Rebuild model
