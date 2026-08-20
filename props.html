@@ -128,6 +128,18 @@ tbody td{padding:3px 3px 3px 0}
 .cell{position:relative}
 .cell.has-odds::after{content:'';position:absolute;top:3px;right:3px;width:5px;height:5px;
   border-radius:50%;background:#fbbf24;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.cell.exact::after{background:#4ade80}
+.badge{display:inline-block;padding:2px 7px;border-radius:6px;font-size:10.5px;font-weight:700;
+  letter-spacing:.03em;text-transform:uppercase;vertical-align:middle;margin-left:8px}
+.b-exact{background:rgba(34,197,94,.15);color:#4ade80}
+.b-est{background:rgba(245,158,11,.15);color:#fbbf24}
+.margin-in{margin-top:10px}
+.margin-in label{display:block;color:var(--dim);font-size:11px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
+.margin-in input{width:100%;background:var(--side);border:1px solid var(--border);color:var(--text);
+  border-radius:9px;padding:8px 10px;font:inherit;font-size:13px;outline:0;text-align:center;
+  font-variant-numeric:tabular-nums}
+.margin-in input:focus{border-color:var(--blue)}
 .cell.pick{outline:2px solid var(--blue);outline-offset:1px}
 .cell{cursor:pointer}
 .vtabs{display:flex;gap:4px;margin-left:auto}
@@ -296,14 +308,45 @@ function toDecimal(raw){
 }
 function fmtPct(x){return (x>=0?'+':'')+(x*100).toFixed(1)+'%'}
 
-/* Two-way de-vig: with only one side there is no way to separate the price
-   from the margin, so the market probability stays null until both are in. */
-function marketProb(over,under){
-  const a=toDecimal(over),b=toDecimal(under);
-  if(!a||!b)return null;
-  const ia=1/a,ib=1/b;
-  return ia/(ia+ib);
+/* Hard Rock often prices only the Over on these markets, so the Under is
+   optional.  With both sides the margin is observed and the de-vig is exact.
+   With only the Over it has to be assumed, and everything downstream is
+   labelled as an estimate rather than quietly presented as fact.
+
+   Note that expected value never needs the Under: EV = p*(dec-1) - (1-p)
+   only involves the price you are actually offered.  Only the edge, which
+   compares two probabilities, needs the margin removed. */
+const MARGIN_STORE='hrbet.margin.v1';
+const DEFAULT_MARGIN=0.055;
+
+function learnedMargin(){
+  const saved=localStorage.getItem(MARGIN_STORE);
+  if(saved!==null&&saved!=='')return Number(saved);
+  // fall back to the median margin of the entries that do have both sides
+  const seen=[];
+  Object.values(odds).forEach(e=>{
+    const a=toDecimal(e.over),b=toDecimal(e.under);
+    if(a&&b)seen.push(1/a+1/b-1);
+  });
+  if(seen.length<3)return DEFAULT_MARGIN;
+  seen.sort((x,y)=>x-y);
+  return seen[Math.floor(seen.length/2)];
 }
+
+function marketInfo(over,under){
+  const a=toDecimal(over);
+  if(!a)return null;
+  const b=toDecimal(under);
+  const raw=1/a;
+  if(b){
+    const margin=raw+1/b-1;
+    return {pRaw:raw,pFair:raw/(raw+1/b),margin,exact:true};
+  }
+  const margin=learnedMargin();
+  // split the assumed overround proportionally across the two sides
+  return {pRaw:raw,pFair:raw/(1+margin),margin,exact:false};
+}
+function marketProb(over,under){const i=marketInfo(over,under);return i?i.pFair:null}
 
 /* light -> intense blue, matching the reference palette */
 function edgeHeat(e){
@@ -474,7 +517,8 @@ function render(){
       const edge=mp===null?null:p-mp;
       const c=view==='edge'?edgeHeat(edge):heat(p);
       const s=document.createElement('span');s.className='cell';
-      if(entry&&(entry.over||entry.under))s.classList.add('has-odds');
+      if(entry&&entry.over){s.classList.add('has-odds');
+        if(toDecimal(entry.under))s.classList.add('exact')}
       if(pick&&pick.id===r.id&&pick.line===line)s.classList.add('pick');
       s.style.background=c.bg;s.style.color=c.fg;
       s.textContent=view==='edge'?(edge===null?'—':fmtPct(edge)):Math.round(p*100)+'%';
@@ -533,7 +577,8 @@ function renderTeamGrid(oid,isHome){
       const edge=mp===null?null:prob-mp;
       const c=view==='edge'?edgeHeat(edge):heat(prob);
       const sp=document.createElement('span');sp.className='cell';
-      if(entry&&(entry.over||entry.under))sp.classList.add('has-odds');
+      if(entry&&entry.over){sp.classList.add('has-odds');
+        if(toDecimal(entry.under))sp.classList.add('exact')}
       if(pick&&pick.scope==='t'&&pick.mk===mk&&pick.line===line&&pick.who===who)sp.classList.add('pick');
       sp.style.background=c.bg;sp.style.color=c.fg;
       sp.innerHTML=`<em style="font-style:normal;opacity:.62;font-size:10.5px;font-weight:600;`+
@@ -562,34 +607,46 @@ function renderOdds(){
   if(!pick){
     box.innerHTML='<h3>Comparar con la cuota</h3>'+
       '<p>Clic en cualquier celda para cargar lo que te ofrece Hard Rock y ver el edge.</p>'+
-      '<p class="hint">Acepta formato americano (+150, -120) o decimal (2.50). '+
-      'Hacen falta las dos patas, Over y Under, para poder quitarle el margen a la cuota.</p>';
+      '<p class="hint">Acepta formato americano (−200, +150) o decimal (2.50). '+
+      'Con la cuota Over alcanza: el EV sale exacto. Si además cargás el Under, '+
+      'el margen se mide en vez de asumirse y el edge deja de ser una estimación.</p>';
     return;
   }
   const isTeam=pick.scope==='t';
   const M=isTeam?TEAM_MK[pick.mk]:MARKETS[market];
   const key=isTeam?teamOddsKey(pick.mk,pick.line,pick.who):oddsKey(pick.id,pick.line);
   const entry=odds[key]||{over:'',under:''};
-  const mp=marketProb(entry.over,entry.under);
-  const edge=mp===null?null:pick.p-mp;
+  const info=marketInfo(entry.over,entry.under);
   const dec=toDecimal(entry.over);
-  const ev=(dec&&mp!==null)?pick.p*(dec-1)-(1-pick.p):null;
+  const edge=info?pick.p-info.pFair:null;
+  // EV only involves the price on offer, so it is exact even without the Under
+  const ev=dec?pick.p*(dec-1)-(1-pick.p):null;
   const cls=edge===null?'edge-nil':edge>0?'edge-pos':'edge-neg';
+  const badge=info?(info.exact?'<span class="badge b-exact">exacto</span>'
+                              :'<span class="badge b-est">estimado</span>'):'';
   box.innerHTML=
     `<h3>${pick.name}</h3><p>${isTeam?(pick.who==='match'?'Total del partido':'Total de equipo'):M.name} · Over ${String(pick.line).replace('.',',')}</p>`+
     `<div class="odds-in">`+
-      `<div><label>Cuota Over</label><input id="o-over" value="${entry.over||''}" placeholder="+150"></div>`+
-      `<div><label>Cuota Under</label><input id="o-under" value="${entry.under||''}" placeholder="-190"></div>`+
+      `<div><label>Cuota Over</label><input id="o-over" value="${entry.over||''}" placeholder="-200"></div>`+
+      `<div><label>Under · opcional</label><input id="o-under" value="${entry.under||''}" placeholder="si la hay"></div>`+
     `</div>`+
-    `<div class="edge-big ${cls}">${edge===null?'—':fmtPct(edge)}</div>`+
+    (info&&!info.exact
+      ? `<div class="margin-in"><label>Margen asumido de la casa</label>`+
+        `<input id="o-margin" value="${(info.margin*100).toFixed(1)}"></div>`
+      : '')+
+    `<div class="edge-big ${cls}">${edge===null?'—':fmtPct(edge)}${badge}</div>`+
     `<p class="hint" style="margin-top:0">edge = probabilidad del modelo − probabilidad del mercado sin margen</p>`+
     `<div class="rows">`+
       `<div class="row"><span>Modelo</span><b>${(pick.p*100).toFixed(1)}%</b></div>`+
-      `<div class="row"><span>Mercado (sin margen)</span><b>${mp===null?'—':(mp*100).toFixed(1)+'%'}</b></div>`+
-      `<div class="row"><span>Margen de la casa</span><b>${mp===null?'—':(((1/toDecimal(entry.over))+(1/toDecimal(entry.under))-1)*100).toFixed(1)+'%'}</b></div>`+
-      `<div class="row"><span>EV por unidad</span><b class="${ev===null?'':ev>0?'edge-pos':'edge-neg'}">${ev===null?'—':fmtPct(ev)}</b></div>`+
+      `<div class="row"><span>Implícita de la cuota</span><b>${info?(info.pRaw*100).toFixed(1)+'%':'—'}</b></div>`+
+      `<div class="row"><span>Mercado sin margen</span><b>${info?(info.pFair*100).toFixed(1)+'%':'—'}</b></div>`+
+      `<div class="row"><span>Margen ${info?(info.exact?'observado':'asumido'):''}</span><b>${info?(info.margin*100).toFixed(1)+'%':'—'}</b></div>`+
+      `<div class="row"><span>EV por unidad <em style="font-style:normal;color:#4ade80">· exacto</em></span><b class="${ev===null?'':ev>0?'edge-pos':'edge-neg'}">${ev===null?'—':fmtPct(ev)}</b></div>`+
     `</div>`+
     `<button class="btn-clear" id="o-clear">Borrar esta cuota</button>`+
+    (info&&!info.exact
+      ? `<p class="hint">Sin la cuota Under no se puede separar el precio del margen, así que el edge sale de un margen asumido y arrastra ese error. El EV, en cambio, es exacto: solo depende de la cuota que te ofrecen.</p>`
+      : '')+
     ((isTeam?M.verdict:MARKETS[market].verdict)==='bad'
       ?`<p class="hint" style="color:#f87171">Ojo: ${isTeam?M.why:'en este mercado el modelo no le gana al promedio propio del jugador, así que un edge positivo acá probablemente sea ruido.'}</p>`:'');
 
@@ -603,6 +660,16 @@ function renderOdds(){
     el.onchange=commit;
     el.onkeydown=e=>{if(e.key==='Enter')commit()};
   });
+  const mg=$('o-margin');
+  if(mg){
+    const setMargin=()=>{
+      const v=Number(String(mg.value).replace(',','.'));
+      if(isFinite(v)&&v>=0&&v<50)localStorage.setItem(MARGIN_STORE,String(v/100));
+      render();
+    };
+    mg.onchange=setMargin;
+    mg.onkeydown=e=>{if(e.key==='Enter')setMargin()};
+  }
   $('o-clear').onclick=()=>{delete odds[key];saveOdds();render()};
 }
 
